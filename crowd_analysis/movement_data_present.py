@@ -104,30 +104,16 @@ hi = np.array([136,0,0])
 mask = cv2.inRange(heatmap, lo, hi)
 heatmap[mask > 0] = (0, 0, 0)
 
-for row in range(heatmap.shape[0]):
-    for col in range(heatmap.shape[1]):
-        if (heatmap[row][col] == np.array([0,0,0])).all():
-            heatmap[row][col] = heatmap_frame[row][col] 
+mask = (heatmap == [0, 0, 0]).all(axis=2)
+heatmap[mask] = heatmap_frame[mask]
 
 heatmap_frame = cv2.addWeighted(heatmap, 0.75, heatmap_frame, 0.25, 1)
 
-while True:
-    ret, tracks_frame = cap.read()
-    if not ret:
-        break  # exit when video ends
+# Save the frames as PNG in processed_data folder
+cv2.imwrite("processed_data/movement_tracks.png", tracks_frame)
+cv2.imwrite("processed_data/stationary_heatmap.png", heatmap_frame)
 
-    # Optional: resize frame if needed
-    tracks_frame = imutils.resize(tracks_frame, width=frame_size)
+print("Saved processed_data/movement_tracks.png and processed_data/stationary_heatmap.png")
 
-    # Show the frames
-    cv2.imshow("Movement Tracks", tracks_frame)
-    cv2.imshow("Stationary Location Heatmap", heatmap_frame)
-
-    # Wait until a key is pressed to go to the next frame
-    key = cv2.waitKey(0) & 0xFF
-    if key == ord('n'):  # press 'n' to advance
-        continue
-    elif key == ord('q'):  # quit
-        break
 cap.release()
 cv2.destroyAllWindows()

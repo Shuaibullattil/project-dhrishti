@@ -78,7 +78,7 @@ plt.title('Distribution of energies level')
 plt.xlabel('Energy level')
 plt.ylabel('Count')
 
-plt.savefig("plot1.png")
+plt.savefig("processed_data/energy_distribution_original.png")
 
 
 while df.skew().iloc[0] > 7.5:
@@ -102,4 +102,4 @@ while df.skew().iloc[0] > 7.5:
     plt.xlabel('Energy level')
     plt.ylabel('Count')
 
-plt.savefig("plot2.png")
+plt.savefig("processed_data/energy_distribution_cleaned.png")
