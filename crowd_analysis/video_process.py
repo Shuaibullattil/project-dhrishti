@@ -15,6 +15,16 @@ from deep_sort import nn_matching
 from deep_sort.detection import Detection
 from deep_sort.tracker import Tracker
 from deep_sort import generate_detections as gdet
+
+# Try to import db
+try:
+    import sys
+    import os
+    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "apis")))
+    from db import db
+except ImportError:
+    db = None
+
 IS_CAM = VIDEO_CONFIG["IS_CAM"]
 HIGH_CAM = VIDEO_CONFIG["HIGH_CAM"]
 
@@ -39,7 +49,7 @@ def _end_video(tracker, frame_count, movement_data_writer):
 			_record_movement_data(movement_data_writer, t)
 		
 
-def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writer, crowd_data_writer):
+def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writer, crowd_data_writer, callback=None, session_id=None):
 	def _calculate_FPS():
 		t1 = time.time() - t0
 		VID_FPS = frame_count / t1
@@ -243,12 +253,29 @@ def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writ
 		# Record crowd data to file
 		if DATA_RECORD:
 			_record_crowd_data(record_time, len(humans_detected), len(violate_set), RE, ABNORMAL, crowd_data_writer)
+			if db and session_id:
+				db.insert_frame_data(session_id, {
+					"frame": frame_count,
+					"human_count": len(humans_detected),
+					"violate_count": len(violate_set),
+					"restricted_entry": bool(RE),
+					"abnormal_activity": bool(ABNORMAL)
+				})
 
 		# Display video output or processing indicator
 		if SHOW_PROCESSING_OUTPUT:
 			cv2.imshow("Processed Output", frame)
 		else:
 			progress(display_frame_count)
+
+		if callback:
+			callback({
+				"human_count": len(humans_detected),
+				"violate_count": len(violate_set),
+				"abnormal": ABNORMAL,
+				"restricted_entry": RE,
+				"frame": frame_count
+			})
 
 		# Press 'Q' to stop the video display
 		if cv2.waitKey(1) & 0xFF == ord('q'):

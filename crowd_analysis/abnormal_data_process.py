@@ -7,6 +7,18 @@ import numpy as np
 import pandas as pd
 from math import ceil
 from scipy.spatial.distance import euclidean
+import sys
+import os
+
+# Try to import db
+try:
+    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "apis")))
+    from db import db
+except ImportError:
+    db = None
+
+# Get session_id from command line if available
+session_id = sys.argv[1] if len(sys.argv) > 1 else None
 
 with open('processed_data/video_data.json', 'r') as file:
     data = json.load(file)
@@ -80,6 +92,19 @@ plt.ylabel('Count')
 
 plt.savefig("processed_data/energy_distribution_original.png")
 
+original_stats = {
+    "kurtosis": float(df.kurtosis().iloc[0]),
+    "skew": float(df.skew().iloc[0]),
+    "mean": float(df.Energy.mean()),
+    "std": float(df.Energy.std()),
+    "min": float(df.Energy.min()),
+    "max": float(df.Energy.max()),
+    "q1": float(df.Energy.quantile(0.25)),
+    "q2": float(df.Energy.quantile(0.50)),
+    "q3": float(df.Energy.quantile(0.75)),
+    "acceptable_energy": int(df.Energy.mean() ** 1.05)
+}
+
 
 while df.skew().iloc[0] > 7.5:
     print()
@@ -103,3 +128,20 @@ while df.skew().iloc[0] > 7.5:
     plt.ylabel('Count')
 
 plt.savefig("processed_data/energy_distribution_cleaned.png")
+
+cleaned_stats = {
+    "kurtosis": float(df.kurtosis().iloc[0]),
+    "skew": float(df.skew().iloc[0]),
+    "mean": float(df.Energy.mean()),
+    "std": float(df.Energy.std()),
+    "min": float(df.Energy.min()),
+    "max": float(df.Energy.max()),
+    "q1": float(df.Energy.quantile(0.25)),
+    "q2": float(df.Energy.quantile(0.50)),
+    "q3": float(df.Energy.quantile(0.75)),
+    "acceptable_energy": int(df.Energy.mean() ** 1.05),
+    "outliers_removed": int(c - df.Energy.count())
+}
+
+if db and session_id:
+    db.insert_abnormal_stats(session_id, original_stats, cleaned_stats)

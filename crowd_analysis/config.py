@@ -2,7 +2,7 @@ import datetime
 
 # Video Path
 VIDEO_CONFIG = {
-	"VIDEO_CAP" : "../video/less_crowd.mp4",
+	"VIDEO_CAP" : "../video/airport.mp4",
 	"IS_CAM" : False,
 	"CAM_APPROX_FPS": 3,
 	"HIGH_CAM": False,
@@ -15,7 +15,7 @@ YOLO_CONFIG = {
 	"CONFIG_PATH" : "YOLOv4-tiny/yolov4-tiny.cfg"
 }
 # Show individuals detected
-SHOW_PROCESSING_OUTPUT = True
+SHOW_PROCESSING_OUTPUT = False
 # Show individuals detected
 SHOW_DETECT = True
 # Data record

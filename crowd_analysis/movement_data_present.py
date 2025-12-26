@@ -26,8 +26,9 @@ with open('processed_data/video_data.json', 'r') as file:
 	vid_fps = data["VID_FPS"]
 	data_record_frame = data["DATA_RECORD_FRAME"]
 	frame_size = data["PROCESSED_FRAME_SIZE"]
+	video_cap = data["VIDEO_CAP"]
 
-cap = cv2.VideoCapture(VIDEO_CONFIG["VIDEO_CAP"])
+cap = cv2.VideoCapture(video_cap)
 cap.set(1, 100)
 (ret, tracks_frame) = cap.read()
 tracks_frame = imutils.resize(tracks_frame, width=frame_size)
