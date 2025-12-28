@@ -17,14 +17,18 @@ from deep_sort.detection import Detection
 from deep_sort.tracker import Tracker
 from deep_sort import generate_detections as gdet
 
-# Try to import db
+# Try to import db and cloudinary_utils
 try:
     import sys
     import os
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "apis")))
     from db import db
-except ImportError:
+    from cloudinary_utils import upload_frame_to_cloudinary
+    cloudinary_available = True
+except ImportError as e:
     db = None
+    cloudinary_available = False
+    print(f"Cloudinary not available: {e}")
 
 IS_CAM = VIDEO_CONFIG["IS_CAM"]
 HIGH_CAM = VIDEO_CONFIG["HIGH_CAM"]
@@ -272,13 +276,29 @@ def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writ
 		if DATA_RECORD:
 			_record_crowd_data(record_time, len(humans_detected), len(violate_set), RE, ABNORMAL, crowd_data_writer)
 			if db and session_id:
-				db.insert_frame_data(session_id, {
+				# Prepare frame data
+				frame_data = {
 					"frame": frame_count,
 					"human_count": len(humans_detected),
 					"violate_count": len(violate_set),
 					"restricted_entry": bool(RE),
 					"abnormal_activity": bool(ABNORMAL)
-				})
+				}
+				
+				# Upload to Cloudinary if abnormal activity is detected
+				if ABNORMAL and cloudinary_available:
+					uploaded_url = upload_frame_to_cloudinary(
+						frame, 
+						session_id, 
+						frame_count,
+						folder="abnormal_frames"
+					)
+					if uploaded_url:
+						frame_data["cloudinary_url"] = uploaded_url
+						print(f"Uploaded abnormal frame {frame_count} to Cloudinary: {uploaded_url}")
+				
+				# Insert frame data into MongoDB
+				db.insert_frame_data(session_id, frame_data)
 
 		# Display video output or processing indicator
 		if SHOW_PROCESSING_OUTPUT:
