@@ -223,9 +223,9 @@ function App() {
     if (!trends || trends.length === 0) return [];
     return trends.map((item, index) => ({
       frame: item.frame || index,
-      count: item.human_count || 0,
-      violations: item.violate_count || 0,
-      abnormal: item.abnormal ? 1 : 0
+      count: item.count !== undefined ? item.count : (item.human_count || 0),
+      violations: item.violations !== undefined ? item.violations : (item.violate_count || 0),
+      abnormal: (item.abnormal !== undefined ? item.abnormal : item.abnormal_activity) ? 1 : 0
     }));
   };
 
@@ -233,7 +233,7 @@ function App() {
   const getAbnormalStats = (session) => {
     if (!session || !session.trends) return null;
     const total = session.trends.length;
-    const abnormal = session.trends.filter(t => t.abnormal).length;
+    const abnormal = session.trends.filter(t => t.abnormal !== undefined ? t.abnormal : t.abnormal_activity).length;
     return [
       { name: 'Normal', value: total - abnormal },
       { name: 'Abnormal', value: abnormal }
@@ -301,8 +301,8 @@ function App() {
                     key={session.session_id}
                     onClick={() => loadSessionDetails(session.session_id)}
                     className={`p-4 rounded-lg border cursor-pointer transition-all ${selectedSession === session.session_id
-                        ? 'border-blue-500 bg-blue-50 shadow-sm'
-                        : 'border-gray-200 hover:border-gray-300 hover:shadow-sm bg-white'
+                      ? 'border-blue-500 bg-blue-50 shadow-sm'
+                      : 'border-gray-200 hover:border-gray-300 hover:shadow-sm bg-white'
                       }`}
                   >
                     <div className="flex items-start justify-between mb-2">
@@ -376,10 +376,10 @@ function App() {
                 <p className="text-gray-600">Monitor crowd density, detect anomalies, and analyze behavior patterns</p>
               </div>
               <div className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium ${processingStatus === 'processing'
-                  ? 'bg-green-100 text-green-700'
-                  : processingStatus === 'completed'
-                    ? 'bg-blue-100 text-blue-700'
-                    : 'bg-gray-100 text-gray-600'
+                ? 'bg-green-100 text-green-700'
+                : processingStatus === 'completed'
+                  ? 'bg-blue-100 text-blue-700'
+                  : 'bg-gray-100 text-gray-600'
                 }`}>
                 <div className={`w-2 h-2 rounded-full ${processingStatus === 'processing' ? 'bg-green-500 animate-pulse' : 'bg-gray-400'
                   }`}></div>
@@ -394,8 +394,8 @@ function App() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div
                   className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${file
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-gray-300 hover:border-gray-400 bg-gray-50'
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-gray-300 hover:border-gray-400 bg-gray-50'
                     }`}
                   onClick={() => document.getElementById('fileInput').click()}
                 >
@@ -648,23 +648,30 @@ function App() {
                 </div>
 
                 {/* Summary Stats */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                  <StatCard
+                    title="Avg Count"
+                    value={sessionDetails.session?.summary?.avg_count || 0}
+                    icon={Users}
+                    color="blue"
+                    subtitle="Average density"
+                  />
                   <StatCard
                     title="Peak Count"
                     value={sessionDetails.session?.summary?.peak_count || 0}
-                    icon={Users}
-                    color="blue"
+                    icon={TrendingUp}
+                    color="green"
                     subtitle="Maximum detected"
                   />
                   <StatCard
-                    title="Abnormal Frames"
+                    title="Abnormal"
                     value={sessionDetails.session?.summary?.total_abnormal_frames || 0}
                     icon={AlertTriangle}
                     color="red"
-                    subtitle="Anomaly detections"
+                    subtitle="Anomaly frames"
                   />
                   <StatCard
-                    title="Total Violations"
+                    title="Violations"
                     value={sessionDetails.session?.summary?.total_violations || 0}
                     icon={Shield}
                     color="yellow"
@@ -672,7 +679,7 @@ function App() {
                   />
                   <StatCard
                     title="Frame Rate"
-                    value={sessionDetails.session?.video_meta?.fps?.toFixed(1) || '30.0'}
+                    value={sessionDetails.session?.video_meta?.VID_FPS?.toFixed(1) || sessionDetails.session?.video_meta?.fps?.toFixed(1) || '30.0'}
                     icon={Zap}
                     color="purple"
                     subtitle="FPS"

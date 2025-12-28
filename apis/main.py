@@ -149,16 +149,19 @@ async def get_sessions():
 
 @app.get("/sessions/{session_id}")
 async def get_session_details(session_id: str):
-    session = db.get_session(session_id)
-    if not session:
-        return {"error": "Session not found"}
+    analysis = get_analysis_results(session_id)
+    if "error" in analysis:
+        return analysis
     
-    trends = db.get_session_trends(session_id)
     abnormal_stats = db.get_abnormal_stats(session_id)
     
     return {
-        "session": session,
-        "trends": trends,
+        "session": {
+            "session_id": session_id,
+            "video_meta": analysis["meta"],
+            "summary": analysis["summary"]
+        },
+        "trends": analysis["trends"],
         "abnormal_stats": abnormal_stats
     }
 

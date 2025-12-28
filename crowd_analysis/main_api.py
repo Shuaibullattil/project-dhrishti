@@ -102,20 +102,50 @@ def get_analysis_results(session_id):
     if not session:
         return {"error": "Session not found"}
         
+    # Get trends (frame-by-frame data)
+    trends = db.get_session_trends(session_id)
+    
+    # Calculate summary statistics from trends
+    if trends:
+        human_counts = [t.get("human_count", 0) for t in trends]
+        violate_counts = [t.get("violate_count", 0) for t in trends]
+        abnormal_flags = [1 if t.get("abnormal_activity", False) else 0 for t in trends]
+        abnormal_frames = sum(abnormal_flags)
+        
+        peak_count = max(human_counts) if human_counts else 0
+        avg_count = round(sum(human_counts) / len(human_counts), 1) if human_counts else 0
+        total_violations = sum(violate_counts)
+        
+        summary = {
+            "peak_count": peak_count,
+            "avg_count": avg_count,
+            "total_abnormal_frames": abnormal_frames,
+            "total_violations": total_violations
+        }
+    else:
+        summary = session.get("summary", {})
+
     # Reconstruct the analysis format used by the UI
+    # The UI prepares chart data by mapping:
+    # count: item.human_count, violations: item.violate_count, abnormal: item.abnormal
+    # We ensure these keys exist in the trends array.
+    processed_trends = []
+    for t in trends:
+        processed_trends.append({
+            **t,
+            "count": t.get("human_count", 0),
+            "violations": t.get("violate_count", 0),
+            "abnormal": t.get("abnormal_activity", False)
+        })
+
     analysis = {
         "meta": session.get("video_meta", {}),
-        "summary": session.get("summary", {}),
+        "summary": summary,
         "movement_data": session.get("movement_data", []),
+        "trends": processed_trends,
         "images": {
             "crowd_statistics_time": "" # No local images anymore
         }
     }
-    
-    # If we need trends (for graphs in the immediate response)
-    # the UI usually fetches them via /sessions/{id}, but apis/main.py 
-    # broadcasted them too.
-    trends = db.get_session_trends(session_id)
-    analysis['trends'] = trends
 
     return analysis
