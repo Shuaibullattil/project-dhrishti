@@ -29,6 +29,14 @@ IS_CAM = VIDEO_CONFIG["IS_CAM"]
 HIGH_CAM = VIDEO_CONFIG["HIGH_CAM"]
 
 def _record_movement_data(movement_data_writer, movement):
+	if movement_data_writer is None:
+		if hasattr(movement, 'positions'): # Track object
+			track_id = movement.track_id 
+			entry_time = movement.entry 
+			exit_time = movement.exit		
+			positions = list(np.array(movement.positions).flatten())
+			return [track_id, entry_time, exit_time] + positions
+		return None
 	track_id = movement.track_id 
 	entry_time = movement.entry 
 	exit_time = movement.exit		
@@ -39,14 +47,19 @@ def _record_movement_data(movement_data_writer, movement):
 	movement_data_writer.writerow(data)
 
 def _record_crowd_data(time, human_count, violate_count, restricted_entry, abnormal_activity, crowd_data_writer):
+	if crowd_data_writer is None:
+		return
 	data = [time, human_count, violate_count, int(restricted_entry), int(abnormal_activity)]
 	crowd_data_writer.writerow(data)
 
 def _end_video(tracker, frame_count, movement_data_writer):
+	data_list = []
 	for t in tracker.tracks:
 		if t.is_confirmed():
 			t.exit = frame_count
-			_record_movement_data(movement_data_writer, t)
+			res = _record_movement_data(movement_data_writer, t)
+			if res: data_list.append(res)
+	return data_list
 		
 
 def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writer, crowd_data_writer, callback=None, session_id=None):
@@ -73,6 +86,8 @@ def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writ
 	re_warning_timeout = 0
 	sd_warning_timeout = 0
 	ab_warning_timeout = 0
+	
+	collected_movement_data = []
 
 	RE = False
 	ABNORMAL = False
@@ -82,7 +97,8 @@ def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writ
 
 		# Stop the loop when video ends
 		if not ret:
-			_end_video(tracker, frame_count, movement_data_writer)
+			res = _end_video(tracker, frame_count, movement_data_writer)
+			if res: collected_movement_data.extend(res)
 			if not VID_FPS:
 				_calculate_FPS()
 			break
@@ -122,7 +138,8 @@ def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writ
 
 		# Record movement data
 		for movement in expired:
-			_record_movement_data(movement_data_writer, movement)
+			res = _record_movement_data(movement_data_writer, movement)
+			if res: collected_movement_data.append(res)
 		
 		# Check for restricted entry
 		if RE_CHECK:
@@ -287,4 +304,4 @@ def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writ
 			break
 	
 	cv2.destroyAllWindows()
-	return VID_FPS
+	return VID_FPS, collected_movement_data

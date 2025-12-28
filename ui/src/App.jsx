@@ -4,7 +4,7 @@ import {
   Upload, Play, Loader2, LayoutDashboard, History, Settings,
   Users, AlertTriangle, Shield, Clock, ChevronRight, Download,
   Activity, BarChart3, Info, TrendingUp, Video, FileVideo,
-  Zap, Eye, CheckCircle2, XCircle
+  Zap, Eye, CheckCircle2, XCircle, Trash2
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
@@ -123,7 +123,7 @@ function App() {
     setChartData([]);
     setRealtimeData({ count: 0, violations: 0, abnormal: false, restricted: false, frame: 0 });
     setCurrentSession(null);
-    
+
     const formData = new FormData();
     formData.append('file', file);
 
@@ -153,6 +153,25 @@ function App() {
     } catch (err) {
       console.error("Load session details failed", err);
       alert("Failed to load session details");
+    }
+  };
+
+  const handleDeleteSession = async (e, sessionId) => {
+    e.stopPropagation(); // Prevent opening session details
+    if (!window.confirm("Are you sure you want to delete this session and all its data?")) return;
+
+    try {
+      await axios.delete(`${API_BASE}/sessions/${sessionId}`);
+      // Refresh sessions list
+      fetchSessions();
+      // If the deleted session was selected, clear details
+      if (selectedSession === sessionId) {
+        setSelectedSession(null);
+        setSessionDetails(null);
+      }
+    } catch (err) {
+      console.error("Delete session failed", err);
+      alert("Failed to delete session");
     }
   };
 
@@ -281,11 +300,10 @@ function App() {
                   <div
                     key={session.session_id}
                     onClick={() => loadSessionDetails(session.session_id)}
-                    className={`p-4 rounded-lg border cursor-pointer transition-all ${
-                      selectedSession === session.session_id
+                    className={`p-4 rounded-lg border cursor-pointer transition-all ${selectedSession === session.session_id
                         ? 'border-blue-500 bg-blue-50 shadow-sm'
                         : 'border-gray-200 hover:border-gray-300 hover:shadow-sm bg-white'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex-1 min-w-0">
@@ -297,7 +315,7 @@ function App() {
                           {formatDate(session.start_time)}
                         </p>
                       </div>
-                      <div className="ml-2">
+                      <div className="flex items-center gap-2 ml-2">
                         {session.status === 'completed' ? (
                           <CheckCircle2 size={16} className="text-green-500" />
                         ) : session.status === 'processing' ? (
@@ -305,6 +323,13 @@ function App() {
                         ) : (
                           <XCircle size={16} className="text-red-500" />
                         )}
+                        <button
+                          onClick={(e) => handleDeleteSession(e, session.session_id)}
+                          className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                          title="Delete Session"
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </div>
                     </div>
                     {session.summary && (
@@ -350,18 +375,16 @@ function App() {
                 <h2 className="text-3xl font-bold text-gray-900 mb-2">Real-time Analysis Dashboard</h2>
                 <p className="text-gray-600">Monitor crowd density, detect anomalies, and analyze behavior patterns</p>
               </div>
-              <div className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium ${
-                processingStatus === 'processing'
+              <div className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium ${processingStatus === 'processing'
                   ? 'bg-green-100 text-green-700'
                   : processingStatus === 'completed'
-                  ? 'bg-blue-100 text-blue-700'
-                  : 'bg-gray-100 text-gray-600'
-              }`}>
-                <div className={`w-2 h-2 rounded-full ${
-                  processingStatus === 'processing' ? 'bg-green-500 animate-pulse' : 'bg-gray-400'
-                }`}></div>
-                {processingStatus === 'processing' ? 'Processing' : 
-                 processingStatus === 'completed' ? 'Completed' : 'Idle'}
+                    ? 'bg-blue-100 text-blue-700'
+                    : 'bg-gray-100 text-gray-600'
+                }`}>
+                <div className={`w-2 h-2 rounded-full ${processingStatus === 'processing' ? 'bg-green-500 animate-pulse' : 'bg-gray-400'
+                  }`}></div>
+                {processingStatus === 'processing' ? 'Processing' :
+                  processingStatus === 'completed' ? 'Completed' : 'Idle'}
               </div>
             </div>
 
@@ -370,11 +393,10 @@ function App() {
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Upload Video</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div
-                  className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${
-                    file
+                  className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${file
                       ? 'border-blue-500 bg-blue-50'
                       : 'border-gray-300 hover:border-gray-400 bg-gray-50'
-                  }`}
+                    }`}
                   onClick={() => document.getElementById('fileInput').click()}
                 >
                   <input

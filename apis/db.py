@@ -4,6 +4,8 @@ import os
 from datetime import datetime
 from dotenv import load_dotenv
 from pathlib import Path
+import certifi
+import ssl
 
 # Load environment variables from .env file in project root
 env_path = Path(__file__).parent.parent / '.env'
@@ -17,7 +19,75 @@ if not MONGO_URI:
 
 class MongoDB:
     def __init__(self):
-        self.client = MongoClient(MONGO_URI, server_api=ServerApi('1'))
+        # Use certifi CA bundle to ensure TLS handshake succeeds against Atlas
+        # especially on systems where the OS cert store/OpenSSL may be incompatible.
+        # Try multiple connection strategies for better compatibility
+        
+        # Check if MONGO_URI already contains TLS parameters
+        uri_has_tls = 'tls=true' in MONGO_URI.lower() or 'ssl=true' in MONGO_URI.lower()
+        
+        connection_configs = [
+            # Strategy 1: Use certifi CA bundle (most common for Atlas)
+            {
+                'name': 'certifi CA bundle',
+                'params': {
+                    'server_api': ServerApi('1'),
+                    'tls': True,
+                    'tlsCAFile': certifi.where(),
+                    'tlsAllowInvalidCertificates': False,
+                    'tlsAllowInvalidHostnames': False,
+                    'connectTimeoutMS': 30000,
+                    'socketTimeoutMS': 30000,
+                    'serverSelectionTimeoutMS': 30000
+                }
+            },
+            # Strategy 2: Let URI handle TLS (if URI already has TLS settings)
+            {
+                'name': 'URI-based TLS',
+                'params': {
+                    'server_api': ServerApi('1'),
+                    'connectTimeoutMS': 30000,
+                    'socketTimeoutMS': 30000,
+                    'serverSelectionTimeoutMS': 30000
+                }
+            },
+            # Strategy 3: Explicit SSL context
+            {
+                'name': 'SSL context',
+                'params': {
+                    'server_api': ServerApi('1'),
+                    'tls': True,
+                    'ssl_context': ssl.create_default_context(cafile=certifi.where()),
+                    'connectTimeoutMS': 30000,
+                    'socketTimeoutMS': 30000,
+                    'serverSelectionTimeoutMS': 30000
+                }
+            }
+        ]
+        
+        # Try strategies in order
+        for config in connection_configs:
+            try:
+                print(f"Attempting MongoDB connection using: {config['name']}")
+                self.client = MongoClient(MONGO_URI, **config['params'])
+                # Test connection immediately
+                self.client.admin.command('ping')
+                print(f"MongoDB connection successful using: {config['name']}")
+                break
+            except Exception as e:
+                print(f"Connection attempt with {config['name']} failed: {str(e)[:200]}")
+                if config == connection_configs[-1]:  # Last attempt
+                    raise ConnectionError(
+                        f"Failed to connect to MongoDB after trying all methods. "
+                        f"Last error: {str(e)}\n"
+                        f"Please check:\n"
+                        f"1. Your MONGO_URI is correct\n"
+                        f"2. Your IP is whitelisted in MongoDB Atlas\n"
+                        f"3. Your MongoDB credentials are valid\n"
+                        f"4. Try updating certifi: pip install --upgrade certifi"
+                    )
+                continue
+        
         self.db = self.client[DB_NAME]
         self.sessions = self.db["session"]
         self.yolov = self.db["yolov"]
@@ -102,5 +172,16 @@ class MongoDB:
 
     def get_abnormal_stats(self, session_id):
         return self.abnormal_stats.find_one({"session_id": session_id}, {"_id": 0})
+
+    def delete_session(self, session_id):
+        """Deletes all data associated with a session_id across all collections."""
+        try:
+            self.sessions.delete_one({"session_id": session_id})
+            self.yolov.delete_many({"session_id": session_id})
+            self.abnormal_stats.delete_many({"session_id": session_id})
+            return True
+        except Exception as e:
+            print(f"Error deleting session {session_id}: {e}")
+            return False
 
 db = MongoDB()

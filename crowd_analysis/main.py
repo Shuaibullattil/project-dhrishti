@@ -51,38 +51,37 @@ else:
 	max_age=DATA_RECORD_RATE * TRACK_MAX_AGE
 	if max_age > 30:
 		max_age = 30
-model_filename = 'model_data/mars-small128.pb'
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROCESSED_DATA_DIR = os.path.join(SCRIPT_DIR, 'processed_data')
+
+if not os.path.exists(PROCESSED_DATA_DIR):
+	os.makedirs(PROCESSED_DATA_DIR)
+
+model_filename = os.path.join(SCRIPT_DIR, 'model_data/mars-small128.pb')
 encoder = gdet.create_box_encoder(model_filename, batch_size=1)
 metric = nn_matching.NearestNeighborDistanceMetric("cosine", max_cosine_distance, nn_budget)
 tracker = Tracker(metric, max_age=max_age)
 
-if not os.path.exists('processed_data'):
-	os.makedirs('processed_data')
-
-movement_data_file = open('processed_data/movement_data.csv', 'w') 
-crowd_data_file = open('processed_data/crowd_data.csv', 'w')
-# sd_violate_data_file = open('sd_violate_data.csv', 'w')
-# restricted_entry_data_file = open('restricted_entry_data.csv', 'w')
+movement_data_file = open(os.path.join(PROCESSED_DATA_DIR, 'movement_data.csv'), 'w', newline='') 
+crowd_data_file = open(os.path.join(PROCESSED_DATA_DIR, 'crowd_data.csv'), 'w', newline='')
 
 movement_data_writer = csv.writer(movement_data_file)
 crowd_data_writer = csv.writer(crowd_data_file)
-# sd_violate_writer = csv.writer(sd_violate_data_file)
-# restricted_entry_data_writer = csv.writer(restricted_entry_data_file)
 
-if os.path.getsize('processed_data/movement_data.csv') == 0:
-	movement_data_writer.writerow(['Track ID', 'Entry time', 'Exit Time', 'Movement Tracks'])
-if os.path.getsize('processed_data/crowd_data.csv') == 0:
-	crowd_data_writer.writerow(['Time', 'Human Count', 'Social Distance violate', 'Restricted Entry', 'Abnormal Activity'])
+movement_data_writer.writerow(['Track ID', 'Entry time', 'Exit Time', 'Movement Tracks'])
+crowd_data_writer.writerow(['Time', 'Human Count', 'Social Distance violate', 'Restricted Entry', 'Abnormal Activity'])
 
-START_TIME = time.time()
+START_TIME_TS = time.time()
 
-processing_FPS = video_process(cap, FRAME_SIZE, net, ln, encoder, tracker, movement_data_writer, crowd_data_writer)
+# Run the process with local writers for standalone testing
+processing_FPS, _ = video_process(cap, FRAME_SIZE, net, ln, encoder, tracker, movement_data_writer, crowd_data_writer)
 cv2.destroyAllWindows()
+
 movement_data_file.close()
 crowd_data_file.close()
 
-END_TIME = time.time()
-PROCESS_TIME = END_TIME - START_TIME
+END_TIME_TS = time.time()
+PROCESS_TIME = END_TIME_TS - START_TIME_TS
 print("Time elapsed: ", PROCESS_TIME)
 if IS_CAM:
 	print("Processed FPS: ", processing_FPS)
@@ -99,10 +98,9 @@ else:
 		print(f"Warning: Invalid FPS detected ({VID_FPS}). Using default FPS of 30.")
 		VID_FPS = 30
 	DATA_RECORD_FRAME = int(VID_FPS / DATA_RECORD_RATE)
-	START_TIME = VIDEO_CONFIG["START_TIME"]
+	START_DT = VIDEO_CONFIG["START_TIME"]
 	time_elapsed = round(cap.get(cv2.CAP_PROP_FRAME_COUNT) / VID_FPS)
-	END_TIME = START_TIME + datetime.timedelta(seconds=time_elapsed)
-
+	END_DT = START_DT + datetime.timedelta(seconds=time_elapsed)
 
 cap.release()
 
@@ -112,8 +110,8 @@ video_data = {
 	"VID_FPS" : VID_FPS,
 	"PROCESSED_FRAME_SIZE": FRAME_SIZE,
 	"TRACK_MAX_AGE": TRACK_MAX_AGE,
-	"START_TIME": START_TIME.strftime("%d/%m/%Y, %H:%M:%S"),
-	"END_TIME": END_TIME.strftime("%d/%m/%Y, %H:%M:%S")
+	"START_TIME": START_DT.strftime("%d/%m/%Y, %H:%M:%S"),
+	"END_TIME": END_DT.strftime("%d/%m/%Y, %H:%M:%S")
 }
 
 with open('processed_data/video_data.json', 'w') as video_data_file:

@@ -3,17 +3,28 @@ import shutil
 import uuid
 import json
 import asyncio
+import datetime
 from concurrent.futures import ThreadPoolExecutor
 from fastapi import FastAPI, UploadFile, File, BackgroundTasks, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from typing import List, Dict
+from typing import List, Dict, Any
+
+def json_serial(obj):
+    """JSON serializer for objects not serializable by default json code"""
+    if isinstance(obj, (datetime.datetime, datetime.date)):
+        return obj.isoformat()
+    raise TypeError ("Type %s not serializable" % type(obj))
 
 # Import existing logic (need to adjust paths)
 import sys
-CROWD_ANALYSIS_PATH = os.path.abspath("../crowd_analysis")
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+# Root of the project
+PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
+CROWD_ANALYSIS_PATH = os.path.join(PROJECT_ROOT, "crowd_analysis")
 sys.path.append(CROWD_ANALYSIS_PATH)
+
 from main_api import run_processing, get_analysis_results
 from db import db
 
@@ -28,15 +39,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-UPLOAD_DIR = "uploads"
+UPLOAD_DIR = os.path.join(SCRIPT_DIR, "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# Downloads folder path
-DOWNLOADS_DIR = os.path.join(os.path.expanduser("~"), "Downloads", "Dhrishti_Outputs")
-os.makedirs(DOWNLOADS_DIR, exist_ok=True)
-
-# Static serving for images in Downloads (so UI can see them)
-app.mount("/outputs", StaticFiles(directory=DOWNLOADS_DIR), name="outputs")
+# Shared state for real-time updates
+active_processing: Dict[str, Dict] = {}
 
 # Shared state for real-time updates
 active_processing: Dict[str, Dict] = {}
@@ -72,6 +79,7 @@ async def upload_video(background_tasks: BackgroundTasks, file: UploadFile = Fil
     file_id = str(uuid.uuid4())
     file_path = os.path.abspath(os.path.join(UPLOAD_DIR, f"{file_id}_{file.filename}"))
     
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
     
@@ -90,35 +98,30 @@ async def process_video_task(file_id: str, file_path: str):
     
     def on_progress(data):
         active_processing[file_id].update(data)
-        sync_broadcast(json.dumps({"file_id": file_id, "type": "realtime", "data": data}))
+        sync_broadcast(json.dumps({"file_id": file_id, "type": "realtime", "data": data}, default=json_serial))
 
     try:
         # Run in executor to avoid blocking
-        results_dir = await loop.run_in_executor(executor, run_processing, file_path, file_id, on_progress)
+        await loop.run_in_executor(executor, run_processing, file_path, file_id, on_progress)
         
-        # Get final analysis results
-        analysis = get_analysis_results(results_dir)
+        # Get final analysis results from MongoDB
+        analysis = get_analysis_results(file_id)
         
-        # Move results to Downloads
-        final_dest = os.path.join(DOWNLOADS_DIR, file_id)
-        if os.path.exists(results_dir):
-            shutil.move(results_dir, final_dest)
-            
-            active_processing[file_id]["status"] = "completed"
-            active_processing[file_id]["analysis"] = analysis
-            active_processing[file_id]["output_url_base"] = f"/outputs/{file_id}"
-            
-            # Update session in MongoDB with final analysis
-            db.complete_session(file_id, analysis["summary"], analysis.get("movement_data", []))
-            
-            sync_broadcast(json.dumps({
-                "file_id": file_id, 
-                "status": "completed", 
-                "analysis": analysis,
-                "output_url_base": f"/outputs/{file_id}"
-            }))
-        else:
-            raise Exception("Results directory not found")
+        active_processing[file_id]["status"] = "completed"
+        active_processing[file_id]["analysis"] = analysis
+        
+        # Update session in MongoDB with final analysis
+        db.complete_session(file_id, analysis["summary"], analysis.get("movement_data", []))
+        
+        sync_broadcast(json.dumps({
+            "file_id": file_id, 
+            "status": "completed", 
+            "analysis": analysis
+        }, default=json_serial))
+        
+        # Cleanup uploaded video file
+        if os.path.exists(file_path):
+            os.remove(file_path)
             
     except Exception as e:
         import traceback
@@ -158,6 +161,16 @@ async def get_session_details(session_id: str):
         "trends": trends,
         "abnormal_stats": abnormal_stats
     }
+
+@app.delete("/sessions/{session_id}")
+async def delete_session(session_id: str):
+    # Delete from MongoDB
+    success = db.delete_session(session_id)
+    
+    if success:
+        return {"message": f"Session {session_id} deleted successfully"}
+    else:
+        return {"error": "Failed to delete session"}
 
 if __name__ == "__main__":
     import uvicorn
