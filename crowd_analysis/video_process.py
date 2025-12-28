@@ -4,6 +4,7 @@ import numpy as np
 import imutils
 import cv2
 import time
+import base64
 from math import ceil
 from scipy.spatial.distance import euclidean
 from tracking import detect_human
@@ -286,12 +287,27 @@ def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writ
 			progress(display_frame_count)
 
 		if callback:
+			# Encode frame as base64 JPEG for WebSocket transmission
+			# Resize frame to reduce data size (max width 800px for better performance)
+			frame_for_transmission = frame.copy()
+			h, w = frame_for_transmission.shape[:2]
+			if w > 800:
+				scale = 800 / w
+				new_w = 800
+				new_h = int(h * scale)
+				frame_for_transmission = cv2.resize(frame_for_transmission, (new_w, new_h))
+			
+			# Encode frame as JPEG
+			_, buffer = cv2.imencode('.jpg', frame_for_transmission, [cv2.IMWRITE_JPEG_QUALITY, 85])
+			frame_base64 = base64.b64encode(buffer).decode('utf-8')
+			
 			callback({
 				"human_count": len(humans_detected),
 				"violate_count": len(violate_set),
 				"abnormal": ABNORMAL,
 				"restricted_entry": RE,
-				"frame": frame_count
+				"frame": frame_count,
+				"frame_image": frame_base64  # Base64 encoded JPEG image
 			})
 
 		# Press 'Q' to stop the video display

@@ -26,7 +26,8 @@ function App() {
     violations: 0,
     abnormal: false,
     restricted: false,
-    frame: 0
+    frame: 0,
+    frameImage: null  // Base64 encoded frame image
   });
   const [chartData, setChartData] = useState([]);
   const [sessions, setSessions] = useState([]);
@@ -72,7 +73,8 @@ function App() {
                 violations: msg.data.violate_count || 0,
                 abnormal: msg.data.abnormal || false,
                 restricted: msg.data.restricted_entry || false,
-                frame: msg.data.frame || 0
+                frame: msg.data.frame || 0,
+                frameImage: msg.data.frame_image || null  // Base64 encoded frame image
               });
               setChartData(prev => {
                 const newData = [...prev.slice(-99), {
@@ -121,7 +123,7 @@ function App() {
     if (!file) return;
     setProcessingStatus('uploading');
     setChartData([]);
-    setRealtimeData({ count: 0, violations: 0, abnormal: false, restricted: false, frame: 0 });
+    setRealtimeData({ count: 0, violations: 0, abnormal: false, restricted: false, frame: 0, frameImage: null });
     setCurrentSession(null);
 
     const formData = new FormData();
@@ -388,57 +390,138 @@ function App() {
               </div>
             </div>
 
-            {/* Upload Section */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Upload Video</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div
-                  className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${file
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-300 hover:border-gray-400 bg-gray-50'
-                    }`}
-                  onClick={() => document.getElementById('fileInput').click()}
-                >
-                  <input
-                    type="file"
-                    id="fileInput"
-                    className="hidden"
-                    accept="video/*"
-                    onChange={(e) => setFile(e.target.files[0])}
-                  />
-                  <Upload className={`mx-auto mb-4 ${file ? 'text-blue-600' : 'text-gray-400'}`} size={32} />
-                  <p className="text-sm font-medium text-gray-700 mb-1">
-                    {file ? file.name : 'Click to select video'}
-                  </p>
-                  <p className="text-xs text-gray-500">MP4, AVI, MOV supported</p>
-                </div>
-
-                <div className="flex flex-col justify-center">
-                  <button
-                    disabled={!file || processingStatus === 'processing' || processingStatus === 'uploading'}
-                    onClick={handleUpload}
-                    className="w-full py-3 px-6 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+            {/* Upload Section - Hidden when processing */}
+            {processingStatus !== 'processing' && processingStatus !== 'uploading' && (
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Upload Video</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div
+                    className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${file
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-gray-300 hover:border-gray-400 bg-gray-50'
+                      }`}
+                    onClick={() => document.getElementById('fileInput').click()}
                   >
-                    {processingStatus === 'processing' || processingStatus === 'uploading' ? (
-                      <>
-                        <Loader2 className="animate-spin" size={18} />
-                        Processing...
-                      </>
-                    ) : (
-                      <>
-                        <Play size={18} />
-                        Start Analysis
-                      </>
-                    )}
-                  </button>
-                  {file && (
-                    <p className="text-xs text-gray-500 mt-2 text-center">
-                      File size: {(file.size / (1024 * 1024)).toFixed(2)} MB
+                    <input
+                      type="file"
+                      id="fileInput"
+                      className="hidden"
+                      accept="video/*"
+                      onChange={(e) => setFile(e.target.files[0])}
+                    />
+                    <Upload className={`mx-auto mb-4 ${file ? 'text-blue-600' : 'text-gray-400'}`} size={32} />
+                    <p className="text-sm font-medium text-gray-700 mb-1">
+                      {file ? file.name : 'Click to select video'}
                     </p>
-                  )}
+                    <p className="text-xs text-gray-500">MP4, AVI, MOV supported</p>
+                  </div>
+
+                  <div className="flex flex-col justify-center">
+                    <button
+                      disabled={!file || processingStatus === 'processing' || processingStatus === 'uploading'}
+                      onClick={handleUpload}
+                      className="w-full py-3 px-6 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                    >
+                      {processingStatus === 'processing' || processingStatus === 'uploading' ? (
+                        <>
+                          <Loader2 className="animate-spin" size={18} />
+                          Processing...
+                        </>
+                      ) : (
+                        <>
+                          <Play size={18} />
+                          Start Analysis
+                        </>
+                      )}
+                    </button>
+                    {file && (
+                      <p className="text-xs text-gray-500 mt-2 text-center">
+                        File size: {(file.size / (1024 * 1024)).toFixed(2)} MB
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
+
+            {/* Real-time Frame Display - Shown when processing */}
+            {processingStatus === 'processing' && (
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">Processing Frame</h3>
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <Video size={18} />
+                    <span>Frame: {realtimeData.frame}</span>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* Video Frame Display */}
+                  <div className="lg:col-span-2">
+                    <div className="relative bg-black rounded-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
+                      {realtimeData.frameImage ? (
+                        <img
+                          src={`data:image/jpeg;base64,${realtimeData.frameImage}`}
+                          alt="Processing frame"
+                          className="w-full h-full object-contain"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-gray-400">
+                          <div className="text-center">
+                            <Loader2 className="animate-spin mx-auto mb-2" size={32} />
+                            <p className="text-sm">Waiting for frame data...</p>
+                          </div>
+                        </div>
+                      )}
+                      {/* Overlay with frame info */}
+                      {realtimeData.frameImage && (
+                        <div className="absolute top-4 left-4 bg-black bg-opacity-70 text-white px-3 py-2 rounded-lg text-sm font-semibold">
+                          Frame #{realtimeData.frame}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Frame Data Stats */}
+                  <div className="space-y-4">
+                    <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Users className="text-blue-600" size={20} />
+                        <span className="text-sm font-medium text-gray-700">People Count</span>
+                      </div>
+                      <p className="text-2xl font-bold text-blue-600">{realtimeData.count}</p>
+                    </div>
+
+                    <div className="bg-red-50 rounded-lg p-4 border border-red-200">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Shield className="text-red-600" size={20} />
+                        <span className="text-sm font-medium text-gray-700">SD Violations</span>
+                      </div>
+                      <p className="text-2xl font-bold text-red-600">{realtimeData.violations}</p>
+                    </div>
+
+                    <div className={`rounded-lg p-4 border ${realtimeData.abnormal ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <AlertTriangle className={realtimeData.abnormal ? 'text-red-600' : 'text-green-600'} size={20} />
+                        <span className="text-sm font-medium text-gray-700">Anomaly Status</span>
+                      </div>
+                      <p className={`text-lg font-bold ${realtimeData.abnormal ? 'text-red-600' : 'text-green-600'}`}>
+                        {realtimeData.abnormal ? 'Detected' : 'Normal'}
+                      </p>
+                    </div>
+
+                    {realtimeData.restricted && (
+                      <div className="bg-yellow-50 rounded-lg p-4 border border-yellow-200">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Shield className="text-yellow-600" size={20} />
+                          <span className="text-sm font-medium text-gray-700">Restricted Entry</span>
+                        </div>
+                        <p className="text-lg font-bold text-yellow-600">Active</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
