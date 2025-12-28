@@ -173,6 +173,17 @@ class MongoDB:
     def get_abnormal_stats(self, session_id):
         return self.abnormal_stats.find_one({"session_id": session_id}, {"_id": 0})
 
+    def get_abnormal_frames(self, session_id):
+        """Get all frames with abnormal activity and cloudinary_url for a session."""
+        return list(self.yolov.find(
+            {
+                "session_id": session_id,
+                "abnormal_activity": True,
+                "cloudinary_url": {"$exists": True, "$ne": None}
+            },
+            {"_id": 0}
+        ).sort("frame", 1))
+
     def delete_session(self, session_id):
         """Deletes all data associated with a session_id across all collections."""
         try:

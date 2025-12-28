@@ -272,6 +272,9 @@ def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writ
 		# cv2.putText(frame, (current_date), (500, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 3)
 		# cv2.putText(frame, (current_time), (500, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 3)
 			
+		# Store cloudinary_url for callback
+		cloudinary_url_for_callback = None
+		
 		# Record crowd data to file
 		if DATA_RECORD:
 			_record_crowd_data(record_time, len(humans_detected), len(violate_set), RE, ABNORMAL, crowd_data_writer)
@@ -295,6 +298,7 @@ def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writ
 					)
 					if uploaded_url:
 						frame_data["cloudinary_url"] = uploaded_url
+						cloudinary_url_for_callback = uploaded_url
 						print(f"Uploaded abnormal frame {frame_count} to Cloudinary: {uploaded_url}")
 				
 				# Insert frame data into MongoDB
@@ -321,14 +325,21 @@ def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writ
 			_, buffer = cv2.imencode('.jpg', frame_for_transmission, [cv2.IMWRITE_JPEG_QUALITY, 85])
 			frame_base64 = base64.b64encode(buffer).decode('utf-8')
 			
-			callback({
+			# Prepare callback data
+			callback_data = {
 				"human_count": len(humans_detected),
 				"violate_count": len(violate_set),
 				"abnormal": ABNORMAL,
 				"restricted_entry": RE,
 				"frame": frame_count,
 				"frame_image": frame_base64  # Base64 encoded JPEG image
-			})
+			}
+			
+			# Add cloudinary_url if abnormal frame was uploaded
+			if cloudinary_url_for_callback:
+				callback_data["cloudinary_url"] = cloudinary_url_for_callback
+			
+			callback(callback_data)
 
 		# Press 'Q' to stop the video display
 		if cv2.waitKey(1) & 0xFF == ord('q'):

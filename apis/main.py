@@ -154,6 +154,7 @@ async def get_session_details(session_id: str):
         return analysis
     
     abnormal_stats = db.get_abnormal_stats(session_id)
+    abnormal_frames = db.get_abnormal_frames(session_id)
     
     return {
         "session": {
@@ -162,7 +163,8 @@ async def get_session_details(session_id: str):
             "summary": analysis["summary"]
         },
         "trends": analysis["trends"],
-        "abnormal_stats": abnormal_stats
+        "abnormal_stats": abnormal_stats,
+        "abnormal_frames": abnormal_frames
     }
 
 @app.delete("/sessions/{session_id}")

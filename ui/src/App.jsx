@@ -34,6 +34,7 @@ function App() {
   const [selectedSession, setSelectedSession] = useState(null);
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [sessionDetails, setSessionDetails] = useState(null);
+  const [abnormalFrames, setAbnormalFrames] = useState([]); // For real-time abnormal frames
 
   const ws = useRef(null);
 
@@ -76,6 +77,24 @@ function App() {
                 frame: msg.data.frame || 0,
                 frameImage: msg.data.frame_image || null  // Base64 encoded frame image
               });
+              
+              // Track abnormal frames with Cloudinary URL
+              if (msg.data.abnormal && msg.data.cloudinary_url) {
+                setAbnormalFrames(prev => {
+                  // Check if this frame already exists (avoid duplicates)
+                  const exists = prev.some(f => f.frame === msg.data.frame);
+                  if (!exists) {
+                    return [...prev, {
+                      frame: msg.data.frame || 0,
+                      cloudinary_url: msg.data.cloudinary_url,
+                      human_count: msg.data.human_count || 0,
+                      violate_count: msg.data.violate_count || 0,
+                      timestamp: new Date().toISOString()
+                    }].sort((a, b) => a.frame - b.frame); // Sort by frame number
+                  }
+                  return prev;
+                });
+              }
               setChartData(prev => {
                 const newData = [...prev.slice(-99), {
                   time: msg.data.frame || 0,
@@ -124,6 +143,7 @@ function App() {
     setProcessingStatus('uploading');
     setChartData([]);
     setRealtimeData({ count: 0, violations: 0, abnormal: false, restricted: false, frame: 0, frameImage: null });
+    setAbnormalFrames([]); // Reset abnormal frames
     setCurrentSession(null);
 
     const formData = new FormData();
@@ -520,6 +540,44 @@ function App() {
                     )}
                   </div>
                 </div>
+                
+                {/* Abnormal Frames Gallery - Below video frame */}
+                {abnormalFrames.length > 0 && (
+                  <div className="mt-6">
+                    <div className="flex items-center gap-2 mb-4">
+                      <AlertTriangle className="text-red-600" size={20} />
+                      <h3 className="text-lg font-semibold text-gray-900">Abnormal Activity Detected</h3>
+                      <span className="ml-auto text-sm text-gray-600 bg-red-100 text-red-700 px-3 py-1 rounded-full font-medium">
+                        {abnormalFrames.length} {abnormalFrames.length === 1 ? 'Frame' : 'Frames'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                      {abnormalFrames.map((abnormalFrame, idx) => (
+                        <div key={idx} className="bg-red-50 border-2 border-red-200 rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
+                          <div className="relative aspect-video bg-black">
+                            <img
+                              src={abnormalFrame.cloudinary_url}
+                              alt={`Abnormal frame ${abnormalFrame.frame}`}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100"%3E%3Crect fill="%23ccc" width="100" height="100"/%3E%3Ctext fill="%23999" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3EImage not available%3C/text%3E%3C/svg%3E';
+                              }}
+                            />
+                            <div className="absolute top-2 left-2 bg-red-600 text-white px-2 py-1 rounded text-xs font-semibold">
+                              Frame #{abnormalFrame.frame}
+                            </div>
+                          </div>
+                          <div className="p-3">
+                            <div className="flex items-center justify-between text-xs mb-1">
+                              <span className="text-gray-600">People: <span className="font-semibold text-gray-900">{abnormalFrame.human_count}</span></span>
+                              <span className="text-gray-600">Violations: <span className="font-semibold text-red-600">{abnormalFrame.violate_count}</span></span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -893,6 +951,63 @@ function App() {
                     )}
                   </div>
                 </div>
+
+                {/* Abnormal Frames Gallery */}
+                {sessionDetails.abnormal_frames && sessionDetails.abnormal_frames.length > 0 && (
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                    <div className="flex items-center justify-between mb-6">
+                      <div className="flex items-center gap-3">
+                        <AlertTriangle className="text-red-500" size={24} />
+                        <h3 className="text-lg font-semibold text-gray-900">Abnormal Activity Frames</h3>
+                      </div>
+                      <span className="text-sm text-gray-600 bg-red-100 text-red-700 px-3 py-1 rounded-full font-medium">
+                        {sessionDetails.abnormal_frames.length} {sessionDetails.abnormal_frames.length === 1 ? 'Frame' : 'Frames'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                      {sessionDetails.abnormal_frames.map((frame, idx) => (
+                        <div key={idx} className="bg-red-50 border-2 border-red-200 rounded-lg overflow-hidden hover:shadow-lg transition-all cursor-pointer group">
+                          <div className="relative aspect-video bg-black">
+                            <img
+                              src={frame.cloudinary_url}
+                              alt={`Abnormal frame ${frame.frame}`}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                              onError={(e) => {
+                                e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100"%3E%3Crect fill="%23ccc" width="100" height="100"/%3E%3Ctext fill="%23999" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3EImage not available%3C/text%3E%3C/svg%3E';
+                              }}
+                            />
+                            <div className="absolute top-2 left-2 bg-red-600 text-white px-2 py-1 rounded text-xs font-semibold">
+                              Frame #{frame.frame}
+                            </div>
+                          </div>
+                          <div className="p-3">
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-gray-600">People Count</span>
+                                <span className="font-semibold text-gray-900">{frame.human_count || 0}</span>
+                              </div>
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-gray-600">SD Violations</span>
+                                <span className="font-semibold text-red-600">{frame.violate_count || 0}</span>
+                              </div>
+                              {frame.restricted_entry && (
+                                <div className="flex items-center gap-1 text-xs text-yellow-600">
+                                  <Shield size={12} />
+                                  <span>Restricted Entry</span>
+                                </div>
+                              )}
+                              {frame.timestamp && (
+                                <div className="text-xs text-gray-500 pt-1 border-t border-gray-200">
+                                  {new Date(frame.timestamp).toLocaleString()}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Abnormal Statistics */}
                 {sessionDetails.abnormal_stats && (
