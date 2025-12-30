@@ -42,5 +42,17 @@ def progress(frame_count):
 	sys.stdout.flush()
 
 def kinetic_energy(point1, point2, time_step):
+	"""Calculate kinetic energy of a tracked person between two frames.
+	
+	Kinetic Energy (KE) is used to detect abnormal/rapid movement.
+	- point1: current position (x, y) of person's centroid
+	- point2: previous position (x, y) of person's centroid
+	- time_step: time between frames (seconds)
+	
+	Formula: KE = 0.5 * speed^2
+	- speed = distance / time_step (pixels per second)
+	- Larger KE = faster movement = more likely abnormal
+	- Example: distance=10px, time_step=0.2s → speed=50px/s → KE=1250
+	"""
 	speed = euclidean(point1, point2) / time_step
 	return int(0.5 * speed ** 2)

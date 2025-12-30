@@ -161,7 +161,9 @@ def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writ
 			violate_count = np.zeros(len(humans_detected))
 
 			# Initialize list to record id of individual with abnormal energy level
+			# abnormal_individual: stores track_id of each person whose KE exceeds ABNORMAL_ENERGY threshold
 			abnormal_individual = []
+			# ABNORMAL: frame-level flag set to True if proportion of abnormal people exceeds ABNORMAL_THRESH
 			ABNORMAL = False
 			for i, track in enumerate(humans_detected):
 				# Get object bounding box
@@ -189,10 +191,14 @@ def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writ
 								violate_count[j] += 1
 
 				# Compute energy level for each detection
-				if ABNORMAL_CHECK:
-					ke = kinetic_energy(track.positions[-1], track.positions[-2], TIME_STEP)
-					if ke > ABNORMAL_ENERGY:
-						abnormal_individual.append(track.track_id)
+			# Per-person abnormal detection: calculate kinetic energy (speed-based metric)
+			if ABNORMAL_CHECK:
+				# KE = 0.5 * (speed)^2 where speed = pixel distance / TIME_STEP
+				ke = kinetic_energy(track.positions[-1], track.positions[-2], TIME_STEP)
+				# ABNORMAL_ENERGY: threshold (default=1866) above which a person's movement is flagged
+				# If any person's KE > ABNORMAL_ENERGY, add their ID to abnormal_individual list
+				if ke > ABNORMAL_ENERGY:
+					abnormal_individual.append(track.track_id)
 
 				# If restrited entry is on, draw red boxes around each detection
 				if RE:
@@ -213,9 +219,13 @@ def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writ
 					cv2.putText(frame, str(int(idx)), (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, RGB_COLORS["green"], 2)
 				
 			# Check for overall abnormal level, trigger notification if exceeds threshold
-			if len(humans_detected)  > ABNORMAL_MIN_PEOPLE:
-				if len(abnormal_individual) / len(humans_detected) > ABNORMAL_THRESH:
-					ABNORMAL = True
+		# Frame-level abnormal detection: decide if crowd behavior is abnormal
+		# ABNORMAL_MIN_PEOPLE (default=5): minimum crowd size to check for abnormal behavior
+		if len(humans_detected)  > ABNORMAL_MIN_PEOPLE:
+			# ABNORMAL_THRESH (default=0.66): proportion of abnormal people needed to flag frame
+			# Example: if 5+ people detected and >66% are moving abnormally, set ABNORMAL=True
+			if len(abnormal_individual) / len(humans_detected) > ABNORMAL_THRESH:
+				ABNORMAL = True
 
 		# Place violation count on frames
 		if SD_CHECK:
