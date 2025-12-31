@@ -11,7 +11,7 @@ from tracking import detect_human
 from util import rect_distance, progress, kinetic_energy
 from colors import RGB_COLORS
 from config import SHOW_DETECT, DATA_RECORD, RE_CHECK, RE_START_TIME, RE_END_TIME, SD_CHECK, SHOW_VIOLATION_COUNT, SHOW_TRACKING_ID, SOCIAL_DISTANCE,\
-	SHOW_PROCESSING_OUTPUT, YOLO_CONFIG, VIDEO_CONFIG, DATA_RECORD_RATE, ABNORMAL_CHECK, ABNORMAL_ENERGY, ABNORMAL_THRESH, ABNORMAL_MIN_PEOPLE
+	SHOW_PROCESSING_OUTPUT, YOLO_CONFIG, VIDEO_CONFIG, DATA_RECORD_RATE, ABNORMAL_CHECK, ABNORMAL_ENERGY, ABNORMAL_THRESH, ABNORMAL_MIN_PEOPLE, SPEED_THRESHOLD
 from deep_sort import nn_matching
 from deep_sort.detection import Detection
 from deep_sort.tracker import Tracker
@@ -190,15 +190,15 @@ def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writ
 								violate_set.add(j)
 								violate_count[j] += 1
 
-				# Compute energy level for each detection
-			# Per-person abnormal detection: calculate kinetic energy (speed-based metric)
-			if ABNORMAL_CHECK:
-				# KE = 0.5 * (speed)^2 where speed = pixel distance / TIME_STEP
-				ke = kinetic_energy(track.positions[-1], track.positions[-2], TIME_STEP)
-				# ABNORMAL_ENERGY: threshold (default=1866) above which a person's movement is flagged
-				# If any person's KE > ABNORMAL_ENERGY, add their ID to abnormal_individual list
-				if ke > ABNORMAL_ENERGY:
-					abnormal_individual.append(track.track_id)
+				# Per-person abnormal detection: calculate kinetic energy (speed-based metric)
+				if ABNORMAL_CHECK:
+					# KE = 0.5 * (speed)^2 where speed = pixel distance / TIME_STEP
+					if len(track.positions) >= 2:
+						ke = kinetic_energy(track.positions[-1], track.positions[-2], TIME_STEP)
+						# ABNORMAL_ENERGY: threshold (default=1866) above which a person's movement is flagged
+						# If any person's KE > ABNORMAL_ENERGY, add their ID to abnormal_individual list
+						if ke > ABNORMAL_ENERGY:
+							abnormal_individual.append(track.track_id)
 
 				# If restrited entry is on, draw red boxes around each detection
 				if RE:
@@ -217,15 +217,15 @@ def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writ
 				
 				if SHOW_TRACKING_ID:
 					cv2.putText(frame, str(int(idx)), (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, RGB_COLORS["green"], 2)
-				
+			
 			# Check for overall abnormal level, trigger notification if exceeds threshold
-		# Frame-level abnormal detection: decide if crowd behavior is abnormal
-		# ABNORMAL_MIN_PEOPLE (default=5): minimum crowd size to check for abnormal behavior
-		if len(humans_detected)  > ABNORMAL_MIN_PEOPLE:
-			# ABNORMAL_THRESH (default=0.66): proportion of abnormal people needed to flag frame
-			# Example: if 5+ people detected and >66% are moving abnormally, set ABNORMAL=True
-			if len(abnormal_individual) / len(humans_detected) > ABNORMAL_THRESH:
-				ABNORMAL = True
+			# Frame-level abnormal detection: decide if crowd behavior is abnormal
+			# ABNORMAL_MIN_PEOPLE (default=5): minimum crowd size to check for abnormal behavior
+			if len(humans_detected) > ABNORMAL_MIN_PEOPLE:
+				# ABNORMAL_THRESH (default=0.66): proportion of abnormal people needed to flag frame
+				# Example: if 5+ people detected and >66% are moving abnormally, set ABNORMAL=True
+				if len(abnormal_individual) / len(humans_detected) > ABNORMAL_THRESH:
+					ABNORMAL = True
 
 		# Place violation count on frames
 		if SD_CHECK:
@@ -285,17 +285,91 @@ def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writ
 		# Store cloudinary_url for callback
 		cloudinary_url_for_callback = None
 		
+		# Calculate new metrics for frame analysis
+		# Get frame dimensions for normalization
+		frame_height, frame_width = frame.shape[:2]
+		frame_area = frame_width * frame_height
+		
+		# Initialize metric accumulators
+		bbox_areas = []
+		motion_speeds = []
+		fast_motion_count = 0
+		
+		# Calculate metrics for each tracked person
+		for track in humans_detected:
+			# 1. Calculate bounding box area (normalized)
+			[x, y, w, h] = list(map(int, track.to_tlbr().tolist()))
+			bbox_area = w * h
+			normalized_area = bbox_area / frame_area if frame_area > 0 else 0.0
+			bbox_areas.append(normalized_area)
+			
+			# 2. Calculate motion speed (if previous position exists)
+			if len(track.positions) >= 2:
+				current_pos = track.positions[-1]
+				previous_pos = track.positions[-2]
+				# Calculate distance moved
+				distance = euclidean(current_pos, previous_pos)
+				# Speed = distance / time_delta
+				speed = distance / TIME_STEP if TIME_STEP > 0 else 0.0
+				motion_speeds.append(speed)
+				
+				# Count fast motion
+				if speed > SPEED_THRESHOLD:
+					fast_motion_count += 1
+			else:
+				# No previous position, speed is 0
+				motion_speeds.append(0.0)
+		
+		# Calculate aggregated metrics
+		avg_bbox_area = np.mean(bbox_areas) if len(bbox_areas) > 0 else 0.0
+		crowd_density_score = len(humans_detected) * avg_bbox_area
+		avg_motion_speed = np.mean(motion_speeds) if len(motion_speeds) > 0 else 0.0
+		fast_motion_ratio = fast_motion_count / len(humans_detected) if len(humans_detected) > 0 else 0.0
+		
+		# Calculate frame_abnormal_score (weighted combination)
+		# Normalize each component to 0-1 range (using reasonable max values)
+		max_human_count = 50  # Reasonable max for normalization
+		max_speed = 50.0  # Reasonable max speed for normalization
+		max_density = 10.0  # Reasonable max density score
+		
+		normalized_human_count = min(len(humans_detected) / max_human_count, 1.0) if max_human_count > 0 else 0.0
+		normalized_speed = min(avg_motion_speed / max_speed, 1.0) if max_speed > 0 else 0.0
+		normalized_density = min(crowd_density_score / max_density, 1.0) if max_density > 0 else 0.0
+		
+		frame_abnormal_score = (
+			0.4 * normalized_human_count +
+			0.3 * normalized_speed +
+			0.3 * normalized_density
+		)
+		
 		# Record crowd data to file
 		if DATA_RECORD:
 			_record_crowd_data(record_time, len(humans_detected), len(violate_set), RE, ABNORMAL, crowd_data_writer)
+			
+			# For standalone testing: print metrics every 30 frames
+			if not db and display_frame_count % 30 == 0:
+				print(f"\nFrame {frame_count} Metrics:")
+				print(f"  Human Count: {len(humans_detected)}")
+				print(f"  Avg BBox Area: {avg_bbox_area:.4f}")
+				print(f"  Crowd Density Score: {crowd_density_score:.4f}")
+				print(f"  Avg Motion Speed: {avg_motion_speed:.4f}")
+				print(f"  Fast Motion Ratio: {fast_motion_ratio:.4f}")
+				print(f"  Frame Abnormal Score: {frame_abnormal_score:.4f}")
+			
 			if db and session_id:
-				# Prepare frame data
+				# Prepare frame data with all metrics
 				frame_data = {
 					"frame": frame_count,
 					"human_count": len(humans_detected),
 					"violate_count": len(violate_set),
 					"restricted_entry": bool(RE),
-					"abnormal_activity": bool(ABNORMAL)
+					"abnormal_activity": bool(ABNORMAL),
+					# New metrics
+					"avg_bbox_area": round(float(avg_bbox_area), 4),
+					"crowd_density_score": round(float(crowd_density_score), 4),
+					"avg_motion_speed": round(float(avg_motion_speed), 4),
+					"fast_motion_ratio": round(float(fast_motion_ratio), 4),
+					"frame_abnormal_score": round(float(frame_abnormal_score), 4)
 				}
 				
 				# Upload to Cloudinary if abnormal activity is detected

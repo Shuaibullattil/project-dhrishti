@@ -51,3 +51,6 @@ NMS_THRESH = 0.2
 FRAME_SIZE = 1080
 # Tracker max missing age before removing (seconds)
 TRACK_MAX_AGE = 3
+# Speed threshold for fast motion detection (pixels per time step)
+# Normal walking speed is typically below this threshold
+SPEED_THRESHOLD = 10.0
