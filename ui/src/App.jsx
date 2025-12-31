@@ -35,6 +35,7 @@ function App() {
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [sessionDetails, setSessionDetails] = useState(null);
   const [abnormalFrames, setAbnormalFrames] = useState([]); // For real-time abnormal frames
+  const [remarks, setRemarks] = useState([]); // For real-time remarks
 
   const ws = useRef(null);
 
@@ -104,6 +105,22 @@ function App() {
                 }];
                 return newData;
               });
+            } else if (msg.type === 'remark') {
+              // Add new remark to the list
+              setRemarks(prev => {
+                const newRemark = {
+                  ...msg.data,
+                  timestamp: msg.data.window_end || new Date().toISOString()
+                };
+                // Check if remark already exists (avoid duplicates)
+                const exists = prev.some(r => r.window_start === msg.data.window_start);
+                if (!exists) {
+                  return [...prev, newRemark].sort((a, b) => 
+                    new Date(a.timestamp) - new Date(b.timestamp)
+                  );
+                }
+                return prev;
+              });
             }
           }
         };
@@ -144,6 +161,7 @@ function App() {
     setChartData([]);
     setRealtimeData({ count: 0, violations: 0, abnormal: false, restricted: false, frame: 0, frameImage: null });
     setAbnormalFrames([]); // Reset abnormal frames
+    setRemarks([]); // Reset remarks
     setCurrentSession(null);
 
     const formData = new FormData();
@@ -170,7 +188,23 @@ function App() {
   const loadSessionDetails = async (sessionId) => {
     try {
       const res = await axios.get(`${API_BASE}/sessions/${sessionId}`);
-      setSessionDetails(res.data);
+      // Ensure aggregated_windows is included
+      const sessionData = {
+        ...res.data,
+        aggregated_windows: res.data.aggregated_windows || []
+      };
+      
+      // If aggregated_windows is empty, try fetching separately
+      if (!sessionData.aggregated_windows || sessionData.aggregated_windows.length === 0) {
+        try {
+          const aggregatedRes = await axios.get(`${API_BASE}/sessions/${sessionId}/aggregated`);
+          sessionData.aggregated_windows = aggregatedRes.data || [];
+        } catch (e) {
+          console.log("No aggregated data available yet");
+        }
+      }
+      
+      setSessionDetails(sessionData);
       setSelectedSession(sessionId);
     } catch (err) {
       console.error("Load session details failed", err);
@@ -499,6 +533,46 @@ function App() {
                         </div>
                       )}
                     </div>
+                    
+                    {/* Real-time Remarks Section - Below video frame */}
+                    {remarks.length > 0 && (
+                      <div className="mt-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border border-blue-200 p-4">
+                        <div className="flex items-center gap-2 mb-3">
+                          <Activity className="text-blue-600" size={20} />
+                          <h4 className="text-sm font-semibold text-gray-900">Recent Remarks</h4>
+                        </div>
+                        <div className="space-y-2 max-h-48 overflow-y-auto">
+                          {remarks.slice(-5).reverse().map((remark, idx) => (
+                            <div key={idx} className={`p-3 rounded-lg border-l-4 ${
+                              remark.severity === 'CRITICAL' ? 'bg-red-50 border-red-500' :
+                              remark.severity === 'HIGH' ? 'bg-orange-50 border-orange-500' :
+                              remark.severity === 'MEDIUM' ? 'bg-yellow-50 border-yellow-500' :
+                              'bg-green-50 border-green-500'
+                            }`}>
+                              <div className="flex items-start justify-between mb-1">
+                                <span className={`text-xs font-semibold px-2 py-0.5 rounded ${
+                                  remark.severity === 'CRITICAL' ? 'bg-red-200 text-red-800' :
+                                  remark.severity === 'HIGH' ? 'bg-orange-200 text-orange-800' :
+                                  remark.severity === 'MEDIUM' ? 'bg-yellow-200 text-yellow-800' :
+                                  'bg-green-200 text-green-800'
+                                }`}>
+                                  {remark.severity}
+                                </span>
+                                <span className="text-xs text-gray-500">
+                                  {new Date(remark.timestamp).toLocaleTimeString()}
+                                </span>
+                              </div>
+                              <p className="text-sm text-gray-800 font-medium">{remark.remark}</p>
+                              <div className="flex items-center gap-4 mt-2 text-xs text-gray-600">
+                                <span>👥 {remark.avg_human_count?.toFixed(1) || 0}</span>
+                                <span>📈 {remark.crowd_growth_rate ? (remark.crowd_growth_rate * 100).toFixed(1) + '%' : '0%'}</span>
+                                <span>⚡ {remark.avg_fast_motion_ratio ? (remark.avg_fast_motion_ratio * 100).toFixed(0) + '%' : '0%'}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Frame Data Stats */}
@@ -575,6 +649,91 @@ function App() {
                           </div>
                         </div>
                       ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Remarks Analytics Graphs - Below remarks */}
+                {remarks.length > 0 && (
+                  <div className="mt-6">
+                    <div className="flex items-center gap-2 mb-4">
+                      <BarChart3 className="text-blue-600" size={20} />
+                      <h3 className="text-lg font-semibold text-gray-900">Remarks Analytics</h3>
+                      <span className="ml-auto text-sm text-gray-600 bg-blue-100 text-blue-700 px-3 py-1 rounded-full font-medium">
+                        {remarks.length} {remarks.length === 1 ? 'Window' : 'Windows'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      {/* Crowd Count Trend from Remarks */}
+                      <div className="bg-white rounded-lg border border-gray-200 p-4">
+                        <h4 className="text-sm font-semibold text-gray-700 mb-4">Crowd Count Trend</h4>
+                        <div className="h-64">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart data={remarks.map((r, idx) => ({
+                              time: r.timestamp ? (typeof r.timestamp === 'string' ? new Date(r.timestamp).toLocaleTimeString() : new Date(r.timestamp).toLocaleTimeString()) : `Window ${idx + 1}`,
+                              avg: r.avg_human_count || 0,
+                              max: r.max_human_count || 0
+                            }))}>
+                              <defs>
+                                <linearGradient id="colorAvgReal" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                                </linearGradient>
+                                <linearGradient id="colorMaxReal" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3} />
+                                  <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+                                </linearGradient>
+                              </defs>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                              <XAxis 
+                                dataKey="time" 
+                                stroke="#6b7280" 
+                                tick={{ fontSize: 10 }}
+                                angle={-45}
+                                textAnchor="end"
+                                height={60}
+                              />
+                              <YAxis stroke="#6b7280" tick={{ fontSize: 12 }} />
+                              <Tooltip />
+                              <Legend />
+                              <Area type="monotone" dataKey="avg" stroke="#3b82f6" fillOpacity={1} fill="url(#colorAvgReal)" name="Avg Count" />
+                              <Area type="monotone" dataKey="max" stroke="#ef4444" fillOpacity={1} fill="url(#colorMaxReal)" name="Max Count" />
+                            </AreaChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+
+                      {/* Motion & Growth Analysis */}
+                      <div className="bg-white rounded-lg border border-gray-200 p-4">
+                        <h4 className="text-sm font-semibold text-gray-700 mb-4">Motion & Growth Analysis</h4>
+                        <div className="h-64">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={remarks.map((r, idx) => ({
+                              time: r.timestamp ? (typeof r.timestamp === 'string' ? new Date(r.timestamp).toLocaleTimeString() : new Date(r.timestamp).toLocaleTimeString()) : `Window ${idx + 1}`,
+                              speed: r.avg_motion_speed || 0,
+                              growth: r.crowd_growth_rate ? (r.crowd_growth_rate * 100) : 0,
+                              fastRatio: r.avg_fast_motion_ratio ? (r.avg_fast_motion_ratio * 100) : 0
+                            }))}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                              <XAxis 
+                                dataKey="time" 
+                                stroke="#6b7280" 
+                                tick={{ fontSize: 10 }}
+                                angle={-45}
+                                textAnchor="end"
+                                height={60}
+                              />
+                              <YAxis yAxisId="left" stroke="#6b7280" tick={{ fontSize: 12 }} />
+                              <YAxis yAxisId="right" orientation="right" stroke="#f59e0b" tick={{ fontSize: 12 }} />
+                              <Tooltip />
+                              <Legend />
+                              <Line yAxisId="left" type="monotone" dataKey="speed" stroke="#3b82f6" strokeWidth={2} name="Avg Speed" />
+                              <Line yAxisId="right" type="monotone" dataKey="growth" stroke="#10b981" strokeWidth={2} name="Growth %" />
+                              <Line yAxisId="right" type="monotone" dataKey="fastRatio" stroke="#f59e0b" strokeWidth={2} name="Fast Motion %" />
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1006,6 +1165,199 @@ function App() {
                         </div>
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {/* Remark History Section */}
+                {sessionDetails && (
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                    <div className="flex items-center gap-3 mb-6">
+                      <Activity className="text-blue-600" size={24} />
+                      <h3 className="text-lg font-semibold text-gray-900">Remark History & Analytics</h3>
+                      {sessionDetails.aggregated_windows && sessionDetails.aggregated_windows.length > 0 && (
+                        <span className="ml-auto text-sm text-gray-600 bg-blue-100 text-blue-700 px-3 py-1 rounded-full font-medium">
+                          {sessionDetails.aggregated_windows.length} Windows
+                        </span>
+                      )}
+                    </div>
+
+                    {sessionDetails.aggregated_windows && sessionDetails.aggregated_windows.length > 0 ? (
+                      <>
+
+                    {/* Remarks Timeline */}
+                    <div className="mb-6">
+                      <h4 className="text-sm font-semibold text-gray-700 mb-3">Remarks Timeline</h4>
+                      <div className="space-y-2 max-h-64 overflow-y-auto">
+                        {sessionDetails.aggregated_windows.map((window, idx) => (
+                          <div key={idx} className={`p-3 rounded-lg border-l-4 ${
+                            window.severity === 'CRITICAL' ? 'bg-red-50 border-red-500' :
+                            window.severity === 'HIGH' ? 'bg-orange-50 border-orange-500' :
+                            window.severity === 'MEDIUM' ? 'bg-yellow-50 border-yellow-500' :
+                            'bg-green-50 border-green-500'
+                          }`}>
+                            <div className="flex items-start justify-between mb-2">
+                              <div className="flex items-center gap-2">
+                                <span className={`text-xs font-semibold px-2 py-0.5 rounded ${
+                                  window.severity === 'CRITICAL' ? 'bg-red-200 text-red-800' :
+                                  window.severity === 'HIGH' ? 'bg-orange-200 text-orange-800' :
+                                  window.severity === 'MEDIUM' ? 'bg-yellow-200 text-yellow-800' :
+                                  'bg-green-200 text-green-800'
+                                }`}>
+                                  {window.severity}
+                                </span>
+                                <span className="text-xs text-gray-500">
+                                  {window.window_start ? (typeof window.window_start === 'string' ? new Date(window.window_start).toLocaleTimeString() : new Date(window.window_start).toLocaleTimeString()) : 'N/A'} - {window.window_end ? (typeof window.window_end === 'string' ? new Date(window.window_end).toLocaleTimeString() : new Date(window.window_end).toLocaleTimeString()) : 'N/A'}
+                                </span>
+                              </div>
+                            </div>
+                            <p className="text-sm text-gray-800 font-medium mb-2">{window.remark}</p>
+                            <div className="flex items-center gap-4 text-xs text-gray-600">
+                              <span>👥 Avg: {window.avg_human_count?.toFixed(1) || 0} | Max: {window.max_human_count || 0}</span>
+                              <span>📈 Growth: {window.crowd_growth_rate ? (window.crowd_growth_rate * 100).toFixed(1) + '%' : '0%'}</span>
+                              <span>⚡ Fast Motion: {window.avg_fast_motion_ratio ? (window.avg_fast_motion_ratio * 100).toFixed(0) + '%' : '0%'}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Numerical Data Graphs */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      {/* Crowd Count Over Time */}
+                      <div>
+                        <h4 className="text-sm font-semibold text-gray-700 mb-4">Crowd Count Trend</h4>
+                        <div className="h-64">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart data={sessionDetails.aggregated_windows.map((w, idx) => ({
+                              time: w.window_end ? (typeof w.window_end === 'string' ? new Date(w.window_end).toLocaleTimeString() : new Date(w.window_end).toLocaleTimeString()) : `Window ${idx + 1}`,
+                              avg: w.avg_human_count || 0,
+                              max: w.max_human_count || 0
+                            }))}>
+                              <defs>
+                                <linearGradient id="colorAvg" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                                </linearGradient>
+                                <linearGradient id="colorMax" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3} />
+                                  <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+                                </linearGradient>
+                              </defs>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                              <XAxis 
+                                dataKey="time" 
+                                stroke="#6b7280" 
+                                tick={{ fontSize: 10 }}
+                                angle={-45}
+                                textAnchor="end"
+                                height={60}
+                              />
+                              <YAxis stroke="#6b7280" tick={{ fontSize: 12 }} />
+                              <Tooltip />
+                              <Legend />
+                              <Area type="monotone" dataKey="avg" stroke="#3b82f6" fillOpacity={1} fill="url(#colorAvg)" name="Avg Count" />
+                              <Area type="monotone" dataKey="max" stroke="#ef4444" fillOpacity={1} fill="url(#colorMax)" name="Max Count" />
+                            </AreaChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+
+                      {/* Motion Speed & Fast Motion Ratio */}
+                      <div>
+                        <h4 className="text-sm font-semibold text-gray-700 mb-4">Motion Analysis</h4>
+                        <div className="h-64">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={sessionDetails.aggregated_windows.map((w, idx) => ({
+                              time: w.window_end ? (typeof w.window_end === 'string' ? new Date(w.window_end).toLocaleTimeString() : new Date(w.window_end).toLocaleTimeString()) : `Window ${idx + 1}`,
+                              speed: w.avg_motion_speed || 0,
+                              fastRatio: (w.avg_fast_motion_ratio || 0) * 100
+                            }))}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                              <XAxis 
+                                dataKey="time" 
+                                stroke="#6b7280" 
+                                tick={{ fontSize: 10 }}
+                                angle={-45}
+                                textAnchor="end"
+                                height={60}
+                              />
+                              <YAxis yAxisId="left" stroke="#6b7280" tick={{ fontSize: 12 }} />
+                              <YAxis yAxisId="right" orientation="right" stroke="#f59e0b" tick={{ fontSize: 12 }} />
+                              <Tooltip />
+                              <Legend />
+                              <Line yAxisId="left" type="monotone" dataKey="speed" stroke="#3b82f6" strokeWidth={2} name="Avg Speed" />
+                              <Line yAxisId="right" type="monotone" dataKey="fastRatio" stroke="#f59e0b" strokeWidth={2} name="Fast Motion %" />
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+
+                      {/* Density Score */}
+                      <div>
+                        <h4 className="text-sm font-semibold text-gray-700 mb-4">Crowd Density Score</h4>
+                        <div className="h-64">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={sessionDetails.aggregated_windows.map((w, idx) => ({
+                              time: w.window_end ? (typeof w.window_end === 'string' ? new Date(w.window_end).toLocaleTimeString() : new Date(w.window_end).toLocaleTimeString()) : `Window ${idx + 1}`,
+                              density: w.max_density_score || 0
+                            }))}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                              <XAxis 
+                                dataKey="time" 
+                                stroke="#6b7280" 
+                                tick={{ fontSize: 10 }}
+                                angle={-45}
+                                textAnchor="end"
+                                height={60}
+                              />
+                              <YAxis stroke="#6b7280" tick={{ fontSize: 12 }} />
+                              <Tooltip />
+                              <Bar dataKey="density" fill="#8b5cf6" name="Max Density" />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+
+                      {/* Crowd Growth Rate */}
+                      <div>
+                        <h4 className="text-sm font-semibold text-gray-700 mb-4">Crowd Growth Rate</h4>
+                        <div className="h-64">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart data={sessionDetails.aggregated_windows.map((w, idx) => ({
+                              time: w.window_end ? (typeof w.window_end === 'string' ? new Date(w.window_end).toLocaleTimeString() : new Date(w.window_end).toLocaleTimeString()) : `Window ${idx + 1}`,
+                              growth: (w.crowd_growth_rate || 0) * 100
+                            }))}>
+                              <defs>
+                                <linearGradient id="colorGrowth" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                                  <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                                </linearGradient>
+                              </defs>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                              <XAxis 
+                                dataKey="time" 
+                                stroke="#6b7280" 
+                                tick={{ fontSize: 10 }}
+                                angle={-45}
+                                textAnchor="end"
+                                height={60}
+                              />
+                              <YAxis stroke="#6b7280" tick={{ fontSize: 12 }} />
+                              <Tooltip formatter={(value) => `${value.toFixed(1)}%`} />
+                              <Area type="monotone" dataKey="growth" stroke="#10b981" fillOpacity={1} fill="url(#colorGrowth)" name="Growth Rate %" />
+                            </AreaChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+                    </div>
+                    </>
+                    ) : (
+                      <div className="text-center py-12">
+                        <Activity className="mx-auto text-gray-300 mb-3" size={48} />
+                        <p className="text-sm text-gray-500 mb-2">No aggregated data available yet</p>
+                        <p className="text-xs text-gray-400">Aggregation runs every 5 seconds. Data will appear here once windows are processed.</p>
+                      </div>
+                    )}
                   </div>
                 )}
 

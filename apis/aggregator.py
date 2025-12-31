@@ -3,9 +3,17 @@ Time-based tumbling window aggregation service for frame data.
 Aggregates frame data into 5-second windows and generates crowd state classifications.
 """
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Callable
 from pymongo import ASCENDING
 from db import db
+
+# Global callback for broadcasting remarks (set by main.py)
+_remark_broadcast_callback: Optional[Callable] = None
+
+def set_remark_broadcast_callback(callback: Callable):
+    """Set the callback function for broadcasting remarks via WebSocket."""
+    global _remark_broadcast_callback
+    _remark_broadcast_callback = callback
 
 
 def normalize_datetime(dt) -> datetime:
@@ -279,6 +287,32 @@ def process_session_window(session_id: str) -> bool:
     
     # Update last window end
     update_last_window_end(session_id, window_end)
+    
+    # Broadcast new remark via WebSocket (if callback is set)
+    if _remark_broadcast_callback:
+        try:
+            import json
+            
+            remark_message = {
+                "file_id": session_id,
+                "type": "remark",
+                "data": {
+                    "window_start": aggregated["window_start"].isoformat() if isinstance(aggregated["window_start"], datetime) else str(aggregated["window_start"]),
+                    "window_end": aggregated["window_end"].isoformat() if isinstance(aggregated["window_end"], datetime) else str(aggregated["window_end"]),
+                    "remark": aggregated["remark"],
+                    "crowd_state": aggregated["crowd_state"],
+                    "severity": aggregated["severity"],
+                    "avg_human_count": aggregated["avg_human_count"],
+                    "max_human_count": aggregated["max_human_count"],
+                    "avg_motion_speed": aggregated["avg_motion_speed"],
+                    "avg_fast_motion_ratio": aggregated["avg_fast_motion_ratio"],
+                    "crowd_growth_rate": aggregated["crowd_growth_rate"]
+                }
+            }
+            _remark_broadcast_callback(json.dumps(remark_message, default=str))
+        except Exception:
+            # Error broadcasting - continue silently
+            pass
     
     return True
 

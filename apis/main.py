@@ -28,7 +28,7 @@ sys.path.append(CROWD_ANALYSIS_PATH)
 
 from main_api import run_processing, get_analysis_results
 from db import db
-from aggregator import run_window_aggregator
+from aggregator import run_window_aggregator, set_remark_broadcast_callback
 from contextlib import asynccontextmanager
 
 # Background task control
@@ -101,6 +101,9 @@ def sync_broadcast(message: str):
     """Thread-safe wrapper to broadcast from a synchronous context."""
     asyncio.run_coroutine_threadsafe(manager.broadcast(message), loop)
 
+# Set the broadcast callback for aggregator
+set_remark_broadcast_callback(sync_broadcast)
+
 async def background_aggregation_loop():
     """Background task that runs aggregation every 5 seconds for active sessions."""
     global aggregation_running
@@ -108,7 +111,10 @@ async def background_aggregation_loop():
     while aggregation_running:
         try:
             # Run aggregation in executor to avoid blocking
-            await loop.run_in_executor(executor, run_window_aggregator)
+            # This will process one window per active session
+            processed = await loop.run_in_executor(executor, run_window_aggregator)
+            if processed > 0:
+                print(f"Background aggregation: processed {processed} windows")
             # Wait 5 seconds before next iteration
             await asyncio.sleep(5)
         except asyncio.CancelledError:
@@ -205,6 +211,7 @@ async def get_session_details(session_id: str):
     
     abnormal_stats = db.get_abnormal_stats(session_id)
     abnormal_frames = db.get_abnormal_frames(session_id)
+    aggregated_windows = db.get_aggregated_windows(session_id)
     
     return {
         "session": {
@@ -214,7 +221,8 @@ async def get_session_details(session_id: str):
         },
         "trends": analysis["trends"],
         "abnormal_stats": abnormal_stats,
-        "abnormal_frames": abnormal_frames
+        "abnormal_frames": abnormal_frames,
+        "aggregated_windows": aggregated_windows
     }
 
 @app.delete("/sessions/{session_id}")
