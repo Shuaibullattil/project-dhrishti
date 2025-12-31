@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import List, Dict, Any
+from contextlib import asynccontextmanager
 
 def json_serial(obj):
     """JSON serializer for objects not serializable by default json code"""
@@ -27,8 +28,34 @@ sys.path.append(CROWD_ANALYSIS_PATH)
 
 from main_api import run_processing, get_analysis_results
 from db import db
+from aggregator import run_window_aggregator
+from contextlib import asynccontextmanager
 
-app = FastAPI(title="Project Dhrishti API")
+# Background task control
+aggregation_task = None
+aggregation_running = False
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage application lifespan - start and stop background tasks."""
+    global aggregation_task, aggregation_running
+    
+    # Start background aggregation task
+    aggregation_running = True
+    aggregation_task = asyncio.create_task(background_aggregation_loop())
+    
+    yield
+    
+    # Stop background aggregation task
+    aggregation_running = False
+    if aggregation_task:
+        aggregation_task.cancel()
+        try:
+            await aggregation_task
+        except asyncio.CancelledError:
+            pass
+
+app = FastAPI(title="Project Dhrishti API", lifespan=lifespan)
 
 # CORS configuration
 app.add_middleware(
@@ -74,6 +101,22 @@ def sync_broadcast(message: str):
     """Thread-safe wrapper to broadcast from a synchronous context."""
     asyncio.run_coroutine_threadsafe(manager.broadcast(message), loop)
 
+async def background_aggregation_loop():
+    """Background task that runs aggregation every 5 seconds for active sessions."""
+    global aggregation_running
+    
+    while aggregation_running:
+        try:
+            # Run aggregation in executor to avoid blocking
+            await loop.run_in_executor(executor, run_window_aggregator)
+            # Wait 5 seconds before next iteration
+            await asyncio.sleep(5)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            print(f"Error in background aggregation: {e}")
+            await asyncio.sleep(5)  # Wait before retrying
+
 @app.post("/upload")
 async def upload_video(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     file_id = str(uuid.uuid4())
@@ -112,6 +155,13 @@ async def process_video_task(file_id: str, file_path: str):
         
         # Update session in MongoDB with final analysis
         db.complete_session(file_id, analysis["summary"], analysis.get("movement_data", []))
+        
+        # Run aggregation for completed session
+        try:
+            from aggregator import run_window_aggregator_for_session
+            run_window_aggregator_for_session(file_id)
+        except Exception as e:
+            print(f"Error running aggregation for session {file_id}: {e}")
         
         sync_broadcast(json.dumps({
             "file_id": file_id, 
@@ -176,6 +226,38 @@ async def delete_session(session_id: str):
         return {"message": f"Session {session_id} deleted successfully"}
     else:
         return {"error": "Failed to delete session"}
+
+@app.post("/aggregate/run")
+async def run_aggregation():
+    """Run window aggregation for all active sessions."""
+    from aggregator import run_window_aggregator
+    try:
+        processed_count = run_window_aggregator()
+        return {
+            "message": "Aggregation completed",
+            "windows_processed": processed_count
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.post("/aggregate/session/{session_id}")
+async def run_aggregation_for_session(session_id: str):
+    """Run window aggregation for a specific session."""
+    from aggregator import run_window_aggregator_for_session
+    try:
+        processed_count = run_window_aggregator_for_session(session_id)
+        return {
+            "message": f"Aggregation completed for session {session_id}",
+            "windows_processed": processed_count
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.get("/sessions/{session_id}/aggregated")
+async def get_aggregated_windows(session_id: str):
+    """Get all aggregated windows for a session."""
+    windows = db.get_aggregated_windows(session_id)
+    return windows
 
 if __name__ == "__main__":
     import uvicorn

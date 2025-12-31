@@ -92,6 +92,10 @@ class MongoDB:
         self.sessions = self.db["session"]
         self.yolov = self.db["yolov"]
         self.abnormal_stats = self.db["abnormal_statistics"]
+        self.aggregate_frame_data = self.db["aggregate_frame_data"]
+        self.last_aggregate_frame = self.db["last_aggregate_frame"]
+        self.aggregate_frame_data = self.db["aggregate_frame_data"]
+        self.last_aggregate_frame = self.db["last_aggregate_frame"]
 
     def ping(self):
         try:
@@ -184,12 +188,21 @@ class MongoDB:
             {"_id": 0}
         ).sort("frame", 1))
 
+    def get_aggregated_windows(self, session_id):
+        """Get all aggregated windows for a session."""
+        return list(self.aggregate_frame_data.find(
+            {"session_id": session_id},
+            {"_id": 0}
+        ).sort("window_start", 1))
+
     def delete_session(self, session_id):
         """Deletes all data associated with a session_id across all collections."""
         try:
             self.sessions.delete_one({"session_id": session_id})
             self.yolov.delete_many({"session_id": session_id})
             self.abnormal_stats.delete_many({"session_id": session_id})
+            self.aggregate_frame_data.delete_many({"session_id": session_id})
+            self.last_aggregate_frame.delete_one({"session_id": session_id})
             return True
         except Exception as e:
             print(f"Error deleting session {session_id}: {e}")
