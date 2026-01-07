@@ -200,9 +200,9 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 
 # Project-specific ignores
-crowd_analysis/processed_data/
-YOLOv4-tiny/
-model_data/
+#crowd_analysis/processed_data/
+#YOLOv4-tiny/
+#model_data/
 venv/
 *.pyc
 .cursorignore
