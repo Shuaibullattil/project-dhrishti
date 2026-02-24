@@ -1,9 +1,22 @@
 import os
+import sys
+
+# Must be set before TensorFlow (or protobuf) is imported. Avoids "Descriptors cannot
+# be created directly" when TensorFlow 2.6 runs with a newer protobuf runtime.
+os.environ.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")
+
 import shutil
 import uuid
 import json
 import asyncio
 import datetime
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+# Root of the project
+PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
+CROWD_ANALYSIS_PATH = os.path.join(PROJECT_ROOT, "crowd_analysis")
+sys.path.append(CROWD_ANALYSIS_PATH)
+sys.path.append(PROJECT_ROOT)
+
 from concurrent.futures import ThreadPoolExecutor
 from fastapi import FastAPI, UploadFile, File, BackgroundTasks, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,17 +31,10 @@ def json_serial(obj):
         return obj.isoformat()
     raise TypeError ("Type %s not serializable" % type(obj))
 
-# Import existing logic (need to adjust paths)
-import sys
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-# Root of the project
-PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
-CROWD_ANALYSIS_PATH = os.path.join(PROJECT_ROOT, "crowd_analysis")
-sys.path.append(CROWD_ANALYSIS_PATH)
-
 from main_api import run_processing, get_analysis_results
 from db import db
 from aggregator import run_window_aggregator, set_remark_broadcast_callback
+from app.routers.ai_analysis import router as ai_analysis_router
 from contextlib import asynccontextmanager
 
 # Background task control
@@ -65,6 +71,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# AI interpretation layer routes (read-only, uses existing analytics data)
+app.include_router(ai_analysis_router)
 
 UPLOAD_DIR = os.path.join(SCRIPT_DIR, "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
