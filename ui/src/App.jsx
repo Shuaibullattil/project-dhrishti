@@ -6,12 +6,15 @@ import {
   Activity, BarChart3, Info, TrendingUp, Video, FileVideo,
   Zap, Eye, CheckCircle2, XCircle, Trash2
 } from 'lucide-react';
+import SituationCard from './components/ai/SituationCard';
+import AlertExplanationDrawer from './components/ai/AlertExplanationDrawer';
+import AskAssistant from './components/ai/AskAssistant';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell
 } from 'recharts';
 
-const API_BASE = "http://localhost:8000";
+const API_BASE = import.meta.env?.VITE_API_BASE_URL || "http://localhost:8000";
 const WS_URL = "ws://localhost:8000/ws";
 
 const COLORS = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6'];
@@ -36,6 +39,7 @@ function App() {
   const [sessionDetails, setSessionDetails] = useState(null);
   const [abnormalFrames, setAbnormalFrames] = useState([]); // For real-time abnormal frames
   const [remarks, setRemarks] = useState([]); // For real-time remarks
+  const [alertDrawerOpen, setAlertDrawerOpen] = useState(false);
 
   const ws = useRef(null);
 
@@ -496,6 +500,11 @@ function App() {
                   </div>
                 </div>
               </div>
+            )}
+
+            {/* Situation Assessment (AI summary) */}
+            {fileId && (
+              <SituationCard sessionId={fileId} />
             )}
 
             {/* Real-time Frame Display - Shown when processing */}
@@ -1194,7 +1203,7 @@ function App() {
                             window.severity === 'HIGH' ? 'bg-orange-50 border-orange-500' :
                             window.severity === 'MEDIUM' ? 'bg-yellow-50 border-yellow-500' :
                             'bg-green-50 border-green-500'
-                          }`}>
+                          }`} onClick={() => setAlertDrawerOpen(true)}>
                             <div className="flex items-start justify-between mb-2">
                               <div className="flex items-center gap-2">
                                 <span className={`text-xs font-semibold px-2 py-0.5 rounded ${
@@ -1361,6 +1370,9 @@ function App() {
                   </div>
                 )}
 
+                {/* Ask Drishti assistant (session mode) */}
+                <AskAssistant sessionId={selectedSession} mode="session" />
+
                 {/* Abnormal Statistics */}
                 {sessionDetails.abnormal_stats && (
                   <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
@@ -1433,6 +1445,14 @@ function App() {
           </div>
         )}
       </main>
+
+      {/* Global AI helpers */}
+      <AlertExplanationDrawer
+        sessionId={selectedSession || (currentSession?.file_id ?? null)}
+        open={alertDrawerOpen}
+        onClose={() => setAlertDrawerOpen(false)}
+      />
+      <AskAssistant sessionId={selectedSession || fileId || (currentSession?.file_id ?? null)} mode="dashboard" />
     </div>
   );
 }
