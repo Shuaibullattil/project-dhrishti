@@ -132,8 +132,18 @@ async def background_aggregation_loop():
             print(f"Error in background aggregation: {e}")
             await asyncio.sleep(5)  # Wait before retrying
 
+from fastapi import Form
+
 @app.post("/upload")
-async def upload_video(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+async def upload_video(
+    background_tasks: BackgroundTasks, 
+    file: UploadFile = File(...),
+    flow_type: str = Form(...),
+    capacity: int = Form(...),
+    sensitivity: str = Form(...),
+    clustering: str = Form(...),
+    goal: str = Form(...)
+):
     file_id = str(uuid.uuid4())
     file_path = os.path.abspath(os.path.join(UPLOAD_DIR, f"{file_id}_{file.filename}"))
     
@@ -144,7 +154,14 @@ async def upload_video(background_tasks: BackgroundTasks, file: UploadFile = Fil
     active_processing[file_id] = {"status": "queued", "progress": 0, "count": 0}
     
     # Initialize session in MongoDB
-    db.create_session(file_id, file.filename)
+    context = {
+        "flow_type": flow_type,
+        "capacity": capacity,
+        "sensitivity": sensitivity,
+        "clustering": clustering,
+        "goal": goal
+    }
+    db.create_session(file_id, file.filename, context=context)
     
     # Start background processing
     background_tasks.add_task(process_video_task, file_id, file_path)

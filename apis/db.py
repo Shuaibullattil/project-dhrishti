@@ -106,13 +106,14 @@ class MongoDB:
             return False
 
     # Session methods
-    def create_session(self, session_id, filename):
+    def create_session(self, session_id, filename, context=None):
         session_doc = {
             "session_id": session_id,
             "filename": filename,
             "status": "processing",
             "start_time": datetime.now(),
             "video_meta": {},
+            "context": context or {},
             "summary": {
                 "peak_count": 0,
                 "total_abnormal_frames": 0,
