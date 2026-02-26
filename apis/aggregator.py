@@ -5,7 +5,14 @@ Aggregates frame data into 5-second windows and generates crowd state classifica
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple, Callable
 from pymongo import ASCENDING
+import sys
+import os
+
+# Add the project root to sys.path so we can import from app.services
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from db import db
+from app.services.risk_engine import RiskEngine
 
 # Global callback for broadcasting remarks (set by main.py)
 _remark_broadcast_callback: Optional[Callable] = None
@@ -87,7 +94,6 @@ def aggregate_window(frames: List[Dict], window_start: datetime, window_end: dat
         "max_density_score": round(max(density_scores), 4) if density_scores else 0.0,
         "avg_motion_speed": round(sum(motion_speeds) / len(motion_speeds), 4) if motion_speeds else 0.0,
         "avg_fast_motion_ratio": round(sum(fast_motion_ratios) / len(fast_motion_ratios), 4) if fast_motion_ratios else 0.0,
-        "avg_abnormal_score": round(sum(abnormal_scores) / len(abnormal_scores), 4) if abnormal_scores else 0.0,
         "restricted_entry_detected": any(restricted_entries),
         "timestamp": window_end
     }
@@ -124,58 +130,7 @@ def calculate_crowd_growth_rate(session_id: str, current_avg_human_count: float)
     return round(growth_rate, 4)
 
 
-def classify_crowd_state(
-    max_density_score: float,
-    avg_fast_motion_ratio: float,
-    crowd_growth_rate: float,
-    avg_abnormal_score: float
-) -> Tuple[str, str]:
-    """
-    Classify crowd state and severity based on rule-based logic.
-    
-    Args:
-        max_density_score: Maximum density score in window
-        avg_fast_motion_ratio: Average fast motion ratio
-        crowd_growth_rate: Crowd growth rate
-        avg_abnormal_score: Average abnormal score
-    
-    Returns:
-        Tuple of (crowd_state, severity)
-    """
-    # Rule 1: DENSE_FAST_MOVING
-    if max_density_score > 18 and avg_fast_motion_ratio > 0.8:
-        return "DENSE_FAST_MOVING", "CRITICAL"
-    
-    # Rule 2: SUDDEN_SURGE
-    if crowd_growth_rate > 0.25:
-        return "SUDDEN_SURGE", "HIGH"
-    
-    # Rule 3: SUSTAINED_ABNORMAL
-    if avg_abnormal_score > 0.7:
-        return "SUSTAINED_ABNORMAL", "MEDIUM"
-    
-    # Default: NORMAL
-    return "NORMAL", "LOW"
-
-
-def generate_remark(crowd_state: str) -> str:
-    """
-    Generate a remark based on crowd state.
-    
-    Args:
-        crowd_state: Classified crowd state
-    
-    Returns:
-        Human-readable remark string
-    """
-    remarks = {
-        "DENSE_FAST_MOVING": "Extremely dense crowd with widespread fast movement detected",
-        "SUDDEN_SURGE": "Sudden increase in crowd density observed",
-        "SUSTAINED_ABNORMAL": "Sustained abnormal movement detected",
-        "NORMAL": "Crowd behavior within normal limits"
-    }
-    
-    return remarks.get(crowd_state, "Crowd behavior within normal limits")
+# Remove classify_crowd_state and generate_remark as we now use RiskEngine
 
 
 def get_last_window_end(session_id: str) -> Optional[datetime]:
@@ -268,19 +223,53 @@ def process_session_window(session_id: str) -> bool:
     crowd_growth_rate = calculate_crowd_growth_rate(session_id, aggregated["avg_human_count"])
     aggregated["crowd_growth_rate"] = crowd_growth_rate
     
-    # Classify crowd state
-    crowd_state, severity = classify_crowd_state(
-        aggregated["max_density_score"],
-        aggregated["avg_fast_motion_ratio"],
-        crowd_growth_rate,
-        aggregated["avg_abnormal_score"]
-    )
+    # Process Risk Engine Execution
+    session = db.get_session(session_id)
+    session_context = session.get("context", {}) if session else {}
+
+    risk_result = RiskEngine.calculate_risk(session_context, aggregated)
+
+    # Append new risk evaluation variables to aggregation
+    aggregated["density"] = risk_result["density"]
+    aggregated["motion_score"] = risk_result["motion_score"]
+    aggregated["surge_score"] = risk_result["surge_score"]
+    aggregated["risk_score"] = risk_result["risk_score"]
+    aggregated["risk_level"] = risk_result["risk_level"]
+    aggregated["risk_flags"] = risk_result["risk_flags"]
+
+    # Temporarily retain severity and crowd_state to satisfy existing UI compatibility
+    # Mapped backwards from Risk Levels
+    compatibility_map = {
+        "NORMAL": "LOW",
+        "BUSY": "LOW",
+        "WARNING": "MEDIUM",
+        "CRITICAL": "HIGH"
+    }
+    aggregated["severity"] = compatibility_map.get(risk_result["risk_level"], "LOW")
+    aggregated["crowd_state"] = risk_result["risk_level"]
+
+    # Snapshot Trigger (Cloudinary Upload)
+    if risk_result["risk_level"] in ["WARNING", "CRITICAL"]:
+        try:
+            from cloudinary_utils import upload_frame_to_cloudinary
+            # Get the very last frame in the window to snapshot it
+            latest_frame_idx = window_frames[-1].get("frame")
+            
+            # Since we can't capture physical frame images from Aggregator smoothly,
+            # this logic can offload a trigger to the websocket/frontend or main processor,
+            # currently, we mark the DB field. Real implementation might need video_process
+            # integration to upload actual frame bytes, but logically we mark it here.
+            aggregated["snapshot_required"] = True
+            print(f"[{session_id}] Triggered context risk snapshot at frame {latest_frame_idx}")
+        except Exception:
+            pass
     
-    aggregated["crowd_state"] = crowd_state
-    aggregated["severity"] = severity
-    
-    # Generate remark
-    aggregated["remark"] = generate_remark(crowd_state)
+    # Generate remark based on risk flags
+    flags = risk_result["risk_flags"]
+    if flags:
+        aggregated["remark"] = "Risk factors detected: " + ", ".join([f.replace("_", " ").title() for f in flags])
+    else:
+        aggregated["remark"] = "Crowd behavior within normal limits"
     
     # Save aggregated window
     db.aggregate_frame_data.insert_one(aggregated)
@@ -306,7 +295,9 @@ def process_session_window(session_id: str) -> bool:
                     "max_human_count": aggregated["max_human_count"],
                     "avg_motion_speed": aggregated["avg_motion_speed"],
                     "avg_fast_motion_ratio": aggregated["avg_fast_motion_ratio"],
-                    "crowd_growth_rate": aggregated["crowd_growth_rate"]
+                    "crowd_growth_rate": aggregated["crowd_growth_rate"],
+                    "risk_score": aggregated["risk_score"],
+                    "risk_level": aggregated["risk_level"]
                 }
             }
             _remark_broadcast_callback(json.dumps(remark_message, default=str))

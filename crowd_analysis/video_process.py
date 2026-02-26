@@ -190,42 +190,8 @@ def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writ
 								violate_set.add(j)
 								violate_count[j] += 1
 
-				# Per-person abnormal detection: calculate kinetic energy (speed-based metric)
-				if ABNORMAL_CHECK:
-					# KE = 0.5 * (speed)^2 where speed = pixel distance / TIME_STEP
-					if len(track.positions) >= 2:
-						ke = kinetic_energy(track.positions[-1], track.positions[-2], TIME_STEP)
-						# ABNORMAL_ENERGY: threshold (default=1866) above which a person's movement is flagged
-						# If any person's KE > ABNORMAL_ENERGY, add their ID to abnormal_individual list
-						if ke > ABNORMAL_ENERGY:
-							abnormal_individual.append(track.track_id)
-
-				# If restrited entry is on, draw red boxes around each detection
-				if RE:
-					cv2.rectangle(frame, (x + 5 , y + 5 ), (w - 5, h - 5), RGB_COLORS["red"], 5)
-
-				# Draw yellow boxes for detection with social distance violation, green boxes for no violation
-				# Place a number of violation count on top of the box
-				if i in violate_set:
-					cv2.rectangle(frame, (x, y), (w, h), RGB_COLORS["yellow"], 2)
-					if SHOW_VIOLATION_COUNT:
-						cv2.putText(frame, str(int(violate_count[i])), (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, RGB_COLORS["yellow"], 2)
-				elif SHOW_DETECT and not RE:
-					cv2.rectangle(frame, (x, y), (w, h), RGB_COLORS["green"], 2)
-					if SHOW_VIOLATION_COUNT:
-						cv2.putText(frame, str(int(violate_count[i])), (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, RGB_COLORS["green"], 2)
-				
 				if SHOW_TRACKING_ID:
 					cv2.putText(frame, str(int(idx)), (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, RGB_COLORS["green"], 2)
-			
-			# Check for overall abnormal level, trigger notification if exceeds threshold
-			# Frame-level abnormal detection: decide if crowd behavior is abnormal
-			# ABNORMAL_MIN_PEOPLE (default=5): minimum crowd size to check for abnormal behavior
-			if len(humans_detected) > ABNORMAL_MIN_PEOPLE:
-				# ABNORMAL_THRESH (default=0.66): proportion of abnormal people needed to flag frame
-				# Example: if 5+ people detected and >66% are moving abnormally, set ABNORMAL=True
-				if len(abnormal_individual) / len(humans_detected) > ABNORMAL_THRESH:
-					ABNORMAL = True
 
 		# Place violation count on frames
 		if SD_CHECK:
@@ -252,23 +218,6 @@ def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writ
 				if display_frame_count % 3 != 0 :
 					cv2.putText(frame, "RESTRICTED ENTRY", (200, 100),
 						cv2.FONT_HERSHEY_SIMPLEX, 1, RGB_COLORS["red"], 3)
-
-		# Place abnormal activity warning
-		if ABNORMAL_CHECK:
-			if ABNORMAL:
-				# Warning stays on screen for 10 frames
-				ab_warning_timeout = 10
-				# Draw blue boxes over the the abnormally behave detection if abnormal activity detected
-				for track in humans_detected:
-					if track.track_id in abnormal_individual:
-						[x, y, w, h] = list(map(int, track.to_tlbr().tolist()))
-						cv2.rectangle(frame, (x , y ), (w, h), RGB_COLORS["blue"], 5)
-			else:
-				ab_warning_timeout -= 1
-			if ab_warning_timeout > 0:
-				if display_frame_count % 3 != 0:
-					cv2.putText(frame, "ABNORMAL ACTIVITY", (130, 250),
-						cv2.FONT_HERSHEY_SIMPLEX, 1.5, RGB_COLORS["blue"], 5)
 
 		# Display crowd count on screen
 		if SHOW_DETECT:
@@ -326,25 +275,9 @@ def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writ
 		avg_motion_speed = np.mean(motion_speeds) if len(motion_speeds) > 0 else 0.0
 		fast_motion_ratio = fast_motion_count / len(humans_detected) if len(humans_detected) > 0 else 0.0
 		
-		# Calculate frame_abnormal_score (weighted combination)
-		# Normalize each component to 0-1 range (using reasonable max values)
-		max_human_count = 50  # Reasonable max for normalization
-		max_speed = 50.0  # Reasonable max speed for normalization
-		max_density = 10.0  # Reasonable max density score
-		
-		normalized_human_count = min(len(humans_detected) / max_human_count, 1.0) if max_human_count > 0 else 0.0
-		normalized_speed = min(avg_motion_speed / max_speed, 1.0) if max_speed > 0 else 0.0
-		normalized_density = min(crowd_density_score / max_density, 1.0) if max_density > 0 else 0.0
-		
-		frame_abnormal_score = (
-			0.4 * normalized_human_count +
-			0.3 * normalized_speed +
-			0.3 * normalized_density
-		)
-		
 		# Record crowd data to file
 		if DATA_RECORD:
-			_record_crowd_data(record_time, len(humans_detected), len(violate_set), RE, ABNORMAL, crowd_data_writer)
+			_record_crowd_data(record_time, len(humans_detected), len(violate_set), RE, False, crowd_data_writer)
 			
 			# For standalone testing: print metrics every 30 frames
 			if not db and display_frame_count % 30 == 0:
@@ -357,33 +290,18 @@ def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writ
 				print(f"  Frame Abnormal Score: {frame_abnormal_score:.4f}")
 			
 			if db and session_id:
-				# Prepare frame data with all metrics
+				# Prepare frame data with all metrics (Removed frame_abnormal_score and abnormal_activity for context-aware risk engine)
 				frame_data = {
 					"frame": frame_count,
 					"human_count": len(humans_detected),
 					"violate_count": len(violate_set),
 					"restricted_entry": bool(RE),
-					"abnormal_activity": bool(ABNORMAL),
 					# New metrics
 					"avg_bbox_area": round(float(avg_bbox_area), 4),
 					"crowd_density_score": round(float(crowd_density_score), 4),
 					"avg_motion_speed": round(float(avg_motion_speed), 4),
-					"fast_motion_ratio": round(float(fast_motion_ratio), 4),
-					"frame_abnormal_score": round(float(frame_abnormal_score), 4)
+					"fast_motion_ratio": round(float(fast_motion_ratio), 4)
 				}
-				
-				# Upload to Cloudinary if abnormal activity is detected
-				if ABNORMAL and cloudinary_available:
-					uploaded_url = upload_frame_to_cloudinary(
-						frame, 
-						session_id, 
-						frame_count,
-						folder="abnormal_frames"
-					)
-					if uploaded_url:
-						frame_data["cloudinary_url"] = uploaded_url
-						cloudinary_url_for_callback = uploaded_url
-						print(f"Uploaded abnormal frame {frame_count} to Cloudinary: {uploaded_url}")
 				
 				# Insert frame data into MongoDB
 				db.insert_frame_data(session_id, frame_data)
@@ -413,15 +331,11 @@ def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writ
 			callback_data = {
 				"human_count": len(humans_detected),
 				"violate_count": len(violate_set),
-				"abnormal": ABNORMAL,
+				"abnormal": False,  # Note: Retained key temporarily for frontend compat
 				"restricted_entry": RE,
 				"frame": frame_count,
 				"frame_image": frame_base64  # Base64 encoded JPEG image
 			}
-			
-			# Add cloudinary_url if abnormal frame was uploaded
-			if cloudinary_url_for_callback:
-				callback_data["cloudinary_url"] = cloudinary_url_for_callback
 			
 			callback(callback_data)
 

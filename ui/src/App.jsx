@@ -27,7 +27,6 @@ function App() {
   const [realtimeData, setRealtimeData] = useState({
     count: 0,
     violations: 0,
-    abnormal: false,
     restricted: false,
     frame: 0,
     frameImage: null  // Base64 encoded frame image
@@ -84,35 +83,16 @@ function App() {
               setRealtimeData({
                 count: msg.data.human_count || 0,
                 violations: msg.data.violate_count || 0,
-                abnormal: msg.data.abnormal || false,
                 restricted: msg.data.restricted_entry || false,
                 frame: msg.data.frame || 0,
-                frameImage: msg.data.frame_image || null  // Base64 encoded frame image
+                frameImage: msg.data.frame_image || null
               });
 
-              // Track abnormal frames with Cloudinary URL
-              if (msg.data.abnormal && msg.data.cloudinary_url) {
-                setAbnormalFrames(prev => {
-                  // Check if this frame already exists (avoid duplicates)
-                  const exists = prev.some(f => f.frame === msg.data.frame);
-                  if (!exists) {
-                    return [...prev, {
-                      frame: msg.data.frame || 0,
-                      cloudinary_url: msg.data.cloudinary_url,
-                      human_count: msg.data.human_count || 0,
-                      violate_count: msg.data.violate_count || 0,
-                      timestamp: new Date().toISOString()
-                    }].sort((a, b) => a.frame - b.frame); // Sort by frame number
-                  }
-                  return prev;
-                });
-              }
               setChartData(prev => {
                 const newData = [...prev.slice(-99), {
                   time: msg.data.frame || 0,
                   count: msg.data.human_count || 0,
-                  violations: msg.data.violate_count || 0,
-                  abnormal: msg.data.abnormal ? 1 : 0
+                  violations: msg.data.violate_count || 0
                 }];
                 return newData;
               });
@@ -175,7 +155,7 @@ function App() {
 
     setProcessingStatus('uploading');
     setChartData([]);
-    setRealtimeData({ count: 0, violations: 0, abnormal: false, restricted: false, frame: 0, frameImage: null });
+    setRealtimeData({ count: 0, violations: 0, restricted: false, frame: 0, frameImage: null });
     setAbnormalFrames([]); // Reset abnormal frames
     setRemarks([]); // Reset remarks
     setCurrentSession(null);
@@ -301,20 +281,26 @@ function App() {
     return trends.map((item, index) => ({
       frame: item.frame || index,
       count: item.count !== undefined ? item.count : (item.human_count || 0),
-      violations: item.violations !== undefined ? item.violations : (item.violate_count || 0),
-      abnormal: (item.abnormal !== undefined ? item.abnormal : item.abnormal_activity) ? 1 : 0
+      violations: item.violations !== undefined ? item.violations : (item.violate_count || 0)
     }));
   };
 
-  // Calculate statistics for pie chart
-  const getAbnormalStats = (session) => {
-    if (!session || !session.trends) return null;
-    const total = session.trends.length;
-    const abnormal = session.trends.filter(t => t.abnormal !== undefined ? t.abnormal : t.abnormal_activity).length;
+  // Calculate statistics for pie chart using risk_level instead of abnormal trends
+  const getRiskStats = (session) => {
+    if (!session || !session.aggregated_windows || session.aggregated_windows.length === 0) return null;
+    const totals = { NORMAL: 0, BUSY: 0, WARNING: 0, CRITICAL: 0 };
+    session.aggregated_windows.forEach(w => {
+      if (w.risk_level) totals[w.risk_level]++;
+      else if (w.severity === 'LOW') totals.NORMAL++;
+      else if (w.severity === 'MEDIUM') totals.WARNING++;
+      else if (w.severity === 'HIGH') totals.CRITICAL++;
+    });
     return [
-      { name: 'Normal', value: total - abnormal },
-      { name: 'Abnormal', value: abnormal }
-    ];
+      { name: 'Normal', value: totals.NORMAL },
+      { name: 'Busy', value: totals.BUSY },
+      { name: 'Warning', value: totals.WARNING },
+      { name: 'Critical', value: totals.CRITICAL }
+    ].filter(item => item.value > 0);
   };
 
   return (
@@ -693,13 +679,13 @@ function App() {
                       <p className="text-2xl font-bold text-red-600">{realtimeData.violations}</p>
                     </div>
 
-                    <div className={`rounded-lg p-4 border ${realtimeData.abnormal ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
+                    <div className={`rounded-lg p-4 border ${remarks.length > 0 && ['WARNING', 'CRITICAL'].includes(remarks[remarks.length - 1]?.risk_level) ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
                       <div className="flex items-center gap-2 mb-2">
-                        <AlertTriangle className={realtimeData.abnormal ? 'text-red-600' : 'text-green-600'} size={20} />
-                        <span className="text-sm font-medium text-gray-700">Anomaly Status</span>
+                        <AlertTriangle className={remarks.length > 0 && ['WARNING', 'CRITICAL'].includes(remarks[remarks.length - 1]?.risk_level) ? 'text-red-600' : 'text-green-600'} size={20} />
+                        <span className="text-sm font-medium text-gray-700">Current Risk</span>
                       </div>
-                      <p className={`text-lg font-bold ${realtimeData.abnormal ? 'text-red-600' : 'text-green-600'}`}>
-                        {realtimeData.abnormal ? 'Detected' : 'Normal'}
+                      <p className={`text-lg font-bold ${remarks.length > 0 && ['WARNING', 'CRITICAL'].includes(remarks[remarks.length - 1]?.risk_level) ? 'text-red-600' : 'text-green-600'}`}>
+                        {remarks.length > 0 ? remarks[remarks.length - 1].risk_level : 'NORMAL'}
                       </p>
                     </div>
 
@@ -857,11 +843,11 @@ function App() {
                 subtitle="Social distancing"
               />
               <StatCard
-                title="Anomaly Status"
-                value={realtimeData.abnormal ? "Detected" : "Normal"}
+                title="Current Risk"
+                value={remarks.length > 0 ? remarks[remarks.length - 1].risk_level || 'NORMAL' : 'NORMAL'}
                 icon={AlertTriangle}
-                color={realtimeData.abnormal ? "red" : "green"}
-                subtitle="Unusual activity"
+                color={remarks.length > 0 && ['WARNING', 'CRITICAL'].includes(remarks[remarks.length - 1]?.risk_level) ? "red" : "green"}
+                subtitle="Context engine status"
               />
               <StatCard
                 title="Frame"
@@ -928,7 +914,7 @@ function App() {
               {/* Violations Chart */}
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
                 <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-lg font-semibold text-gray-900">Violations & Anomalies</h3>
+                  <h3 className="text-lg font-semibold text-gray-900">Violations Over Time</h3>
                   <Activity size={20} className="text-gray-400" />
                 </div>
                 <div className="h-64">
@@ -939,10 +925,6 @@ function App() {
                           <linearGradient id="colorViolations" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="5%" stopColor="#ef4444" stopOpacity={0.8} />
                             <stop offset="95%" stopColor="#ef4444" stopOpacity={0.1} />
-                          </linearGradient>
-                          <linearGradient id="colorAbnormal" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.8} />
-                            <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.1} />
                           </linearGradient>
                         </defs>
                         <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -972,14 +954,6 @@ function App() {
                           fillOpacity={1}
                           fill="url(#colorViolations)"
                           name="SD Violations"
-                        />
-                        <Area
-                          type="monotone"
-                          dataKey="abnormal"
-                          stroke="#f59e0b"
-                          fillOpacity={1}
-                          fill="url(#colorAbnormal)"
-                          name="Abnormal Activity"
                         />
                       </AreaChart>
                     </ResponsiveContainer>
@@ -1064,11 +1038,11 @@ function App() {
                     subtitle="Maximum detected"
                   />
                   <StatCard
-                    title="Abnormal"
-                    value={sessionDetails.session?.summary?.total_abnormal_frames || 0}
+                    title="Risk Alerts"
+                    value={sessionDetails.aggregated_windows ? sessionDetails.aggregated_windows.filter(w => ['WARNING', 'CRITICAL'].includes(w.risk_level || w.severity)).length : 0}
                     icon={AlertTriangle}
                     color="red"
-                    subtitle="Anomaly frames"
+                    subtitle="High risk windows"
                   />
                   <StatCard
                     title="Violations"
@@ -1138,26 +1112,32 @@ function App() {
                     </div>
                   </div>
 
-                  {/* Abnormal Activity Distribution */}
+                  {/* Risk Level Distribution */}
                   <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-6">Activity Distribution</h3>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-6">Risk Level Distribution</h3>
                     <div className="h-80">
-                      {getAbnormalStats(sessionDetails) ? (
+                      {getRiskStats(sessionDetails) ? (
                         <ResponsiveContainer width="100%" height="100%">
                           <PieChart>
                             <Pie
-                              data={getAbnormalStats(sessionDetails)}
+                              data={getRiskStats(sessionDetails)}
                               cx="50%"
                               cy="50%"
                               labelLine={false}
                               label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
                               outerRadius={100}
-                              fill="#8884d8"
                               dataKey="value"
                             >
-                              {getAbnormalStats(sessionDetails).map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                              ))}
+                              {getRiskStats(sessionDetails).map((entry, index) => {
+                                // Dynamic colors for risk
+                                const colors = {
+                                  "Normal": "#10b981",
+                                  "Busy": "#3b82f6",
+                                  "Warning": "#f59e0b",
+                                  "Critical": "#ef4444"
+                                };
+                                return <Cell key={`cell-${index}`} fill={colors[entry.name] || COLORS[index % COLORS.length]} />;
+                              })}
                             </Pie>
                             <Tooltip />
                             <Legend />
@@ -1172,9 +1152,9 @@ function App() {
                   </div>
                 </div>
 
-                {/* Violations and Abnormal Activity Chart */}
+                {/* Violations Chart */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-6">Violations & Abnormal Activity</h3>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-6">Violations</h3>
                   <div className="h-80">
                     {sessionDetails.trends && sessionDetails.trends.length > 0 ? (
                       <ResponsiveContainer width="100%" height="100%">
@@ -1200,7 +1180,6 @@ function App() {
                           />
                           <Legend />
                           <Bar dataKey="violations" fill="#ef4444" name="SD Violations" />
-                          <Bar dataKey="abnormal" fill="#f59e0b" name="Abnormal Activity" />
                         </BarChart>
                       </ResponsiveContainer>
                     ) : (
@@ -1462,69 +1441,7 @@ function App() {
                 {/* Ask Drishti assistant (session mode) */}
                 <AskAssistant sessionId={selectedSession} mode="session" />
 
-                {/* Abnormal Statistics */}
-                {sessionDetails.abnormal_stats && (
-                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                    <div className="flex items-center gap-3 mb-6">
-                      <AlertTriangle className="text-red-500" size={24} />
-                      <h3 className="text-lg font-semibold text-gray-900">Statistical Analysis</h3>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="space-y-4">
-                        <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Cleaned Statistics</h4>
-                        <div className="space-y-3">
-                          <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                            <span className="text-sm text-gray-600">Mean Energy</span>
-                            <span className="text-sm font-semibold text-gray-900">
-                              {sessionDetails.abnormal_stats.cleaned?.mean?.toFixed(4) || 'N/A'}
-                            </span>
-                          </div>
-                          <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                            <span className="text-sm text-gray-600">Kurtosis</span>
-                            <span className="text-sm font-semibold text-gray-900">
-                              {sessionDetails.abnormal_stats.cleaned?.kurtosis?.toFixed(4) || 'N/A'}
-                            </span>
-                          </div>
-                          <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                            <span className="text-sm text-gray-600">Skewness</span>
-                            <span className="text-sm font-semibold text-gray-900">
-                              {sessionDetails.abnormal_stats.cleaned?.skew?.toFixed(4) || 'N/A'}
-                            </span>
-                          </div>
-                          <div className="flex justify-between items-center p-3 bg-red-50 rounded-lg">
-                            <span className="text-sm text-gray-600">Outliers Removed</span>
-                            <span className="text-sm font-semibold text-red-600">
-                              {sessionDetails.abnormal_stats.cleaned?.outliers_removed || 0}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="space-y-4">
-                        <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Original Statistics</h4>
-                        <div className="space-y-3">
-                          <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                            <span className="text-sm text-gray-600">Mean Energy</span>
-                            <span className="text-sm font-semibold text-gray-900">
-                              {sessionDetails.abnormal_stats.original?.mean?.toFixed(4) || 'N/A'}
-                            </span>
-                          </div>
-                          <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                            <span className="text-sm text-gray-600">Kurtosis</span>
-                            <span className="text-sm font-semibold text-gray-900">
-                              {sessionDetails.abnormal_stats.original?.kurtosis?.toFixed(4) || 'N/A'}
-                            </span>
-                          </div>
-                          <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                            <span className="text-sm text-gray-600">Skewness</span>
-                            <span className="text-sm font-semibold text-gray-900">
-                              {sessionDetails.abnormal_stats.original?.skew?.toFixed(4) || 'N/A'}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                {/* No Abnormal Statistics block */}
               </>
             ) : (
               <div className="flex items-center justify-center h-96">
