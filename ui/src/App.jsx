@@ -4,7 +4,7 @@ import {
   Upload, Play, Loader2, LayoutDashboard, History, Settings,
   Users, AlertTriangle, Shield, Clock, ChevronRight, Download,
   Activity, BarChart3, Info, TrendingUp, Video, FileVideo,
-  Zap, Eye, CheckCircle2, XCircle, Trash2
+  Zap, Eye, CheckCircle2, XCircle, Trash2, Layers
 } from 'lucide-react';
 import SituationCard from './components/ai/SituationCard';
 import AlertExplanationDrawer from './components/ai/AlertExplanationDrawer';
@@ -48,6 +48,7 @@ function App() {
   });
 
   const ws = useRef(null);
+  const [historicalTab, setHistoricalTab] = useState('video');
 
   useEffect(() => {
     fetchSessions();
@@ -599,12 +600,16 @@ function App() {
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                   {/* Video Frame Display */}
                   <div className="lg:col-span-2">
-                    <div className="relative bg-black rounded-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="text-sm font-semibold text-gray-700">Live Video Feed</h4>
+                    </div>
+                    <div className="relative bg-black rounded-lg overflow-hidden flex items-center justify-center" style={{ aspectRatio: '16/9' }}>
                       {realtimeData.frameImage ? (
                         <img
                           src={`data:image/jpeg;base64,${realtimeData.frameImage}`}
                           alt="Processing frame"
-                          className="w-full h-full object-contain"
+                          className="w-full h-full object-contain relative z-10"
+                          id="live-video-img"
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-gray-400">
@@ -616,7 +621,7 @@ function App() {
                       )}
                       {/* Overlay with frame info */}
                       {realtimeData.frameImage && (
-                        <div className="absolute top-4 left-4 bg-black bg-opacity-70 text-white px-3 py-2 rounded-lg text-sm font-semibold">
+                        <div className="absolute top-4 left-4 bg-black bg-opacity-70 text-white px-3 py-2 rounded-lg text-sm font-semibold z-30">
                           Frame #{realtimeData.frame}
                         </div>
                       )}
@@ -1060,388 +1065,421 @@ function App() {
                   />
                 </div>
 
-                {/* Charts */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* People Count Trend */}
-                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-6">People Count Trend</h3>
-                    <div className="h-80">
-                      {sessionDetails.trends && sessionDetails.trends.length > 0 ? (
-                        <ResponsiveContainer width="100%" height="100%">
-                          <AreaChart data={prepareChartData(sessionDetails.trends)}>
-                            <defs>
-                              <linearGradient id="colorCountDetail" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                              </linearGradient>
-                            </defs>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                            <XAxis
-                              dataKey="frame"
-                              stroke="#6b7280"
-                              tick={{ fontSize: 12 }}
-                              label={{ value: 'Frame', position: 'insideBottom', offset: -5 }}
-                            />
-                            <YAxis
-                              stroke="#6b7280"
-                              tick={{ fontSize: 12 }}
-                              label={{ value: 'People Count', angle: -90, position: 'insideLeft' }}
-                            />
-                            <Tooltip
-                              contentStyle={{
-                                backgroundColor: 'white',
-                                border: '1px solid #e5e7eb',
-                                borderRadius: '8px'
-                              }}
-                            />
-                            <Area
-                              type="monotone"
-                              dataKey="count"
-                              stroke="#3b82f6"
-                              strokeWidth={2}
-                              fillOpacity={1}
-                              fill="url(#colorCountDetail)"
-                            />
-                          </AreaChart>
-                        </ResponsiveContainer>
-                      ) : (
-                        <div className="h-full flex items-center justify-center text-gray-400">
-                          <p>No trend data available</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Risk Level Distribution */}
-                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-6">Risk Level Distribution</h3>
-                    <div className="h-80">
-                      {getRiskStats(sessionDetails) ? (
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie
-                              data={getRiskStats(sessionDetails)}
-                              cx="50%"
-                              cy="50%"
-                              labelLine={false}
-                              label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                              outerRadius={100}
-                              dataKey="value"
-                            >
-                              {getRiskStats(sessionDetails).map((entry, index) => {
-                                // Dynamic colors for risk
-                                const colors = {
-                                  "Normal": "#10b981",
-                                  "Busy": "#3b82f6",
-                                  "Warning": "#f59e0b",
-                                  "Critical": "#ef4444"
-                                };
-                                return <Cell key={`cell-${index}`} fill={colors[entry.name] || COLORS[index % COLORS.length]} />;
-                              })}
-                            </Pie>
-                            <Tooltip />
-                            <Legend />
-                          </PieChart>
-                        </ResponsiveContainer>
-                      ) : (
-                        <div className="h-full flex items-center justify-center text-gray-400">
-                          <p>No distribution data available</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                <div className="flex border-b border-gray-200 mt-6 mb-6">
+                  <button
+                    onClick={() => setHistoricalTab('video')}
+                    className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${historicalTab === 'video' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+                  >
+                    Analysis / Data
+                  </button>
+                  <button
+                    onClick={() => setHistoricalTab('heatmap')}
+                    className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${historicalTab === 'heatmap' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+                  >
+                    Final Heatmap
+                  </button>
                 </div>
 
-                {/* Violations Chart */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-6">Violations</h3>
-                  <div className="h-80">
-                    {sessionDetails.trends && sessionDetails.trends.length > 0 ? (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={prepareChartData(sessionDetails.trends)}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                          <XAxis
-                            dataKey="frame"
-                            stroke="#6b7280"
-                            tick={{ fontSize: 12 }}
-                            label={{ value: 'Frame', position: 'insideBottom', offset: -5 }}
-                          />
-                          <YAxis
-                            stroke="#6b7280"
-                            tick={{ fontSize: 12 }}
-                            label={{ value: 'Count', angle: -90, position: 'insideLeft' }}
-                          />
-                          <Tooltip
-                            contentStyle={{
-                              backgroundColor: 'white',
-                              border: '1px solid #e5e7eb',
-                              borderRadius: '8px'
-                            }}
-                          />
-                          <Legend />
-                          <Bar dataKey="violations" fill="#ef4444" name="SD Violations" />
-                        </BarChart>
-                      </ResponsiveContainer>
+                {historicalTab === 'heatmap' ? (
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-6">Final Historical Heatmap</h3>
+                    {sessionDetails.heatmap_url ? (
+                      <div className="relative bg-black rounded-lg overflow-hidden flex items-center justify-center" style={{ aspectRatio: '16/9' }}>
+                        <img src={sessionDetails.heatmap_url} alt="Heatmap" className="w-full h-full object-contain" />
+                      </div>
                     ) : (
-                      <div className="h-full flex items-center justify-center text-gray-400">
-                        <p>No violation data available</p>
+                      <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+                        <Layers size={48} className="mx-auto mb-4 text-gray-300" />
+                        <p>No heatmap generated for this session.</p>
                       </div>
                     )}
                   </div>
-                </div>
-
-                {/* Abnormal Frames Gallery */}
-                {sessionDetails.abnormal_frames && sessionDetails.abnormal_frames.length > 0 && (
-                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                    <div className="flex items-center justify-between mb-6">
-                      <div className="flex items-center gap-3">
-                        <AlertTriangle className="text-red-500" size={24} />
-                        <h3 className="text-lg font-semibold text-gray-900">Abnormal Activity Frames</h3>
-                      </div>
-                      <span className="text-sm text-gray-600 bg-red-100 text-red-700 px-3 py-1 rounded-full font-medium">
-                        {sessionDetails.abnormal_frames.length} {sessionDetails.abnormal_frames.length === 1 ? 'Frame' : 'Frames'}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                      {sessionDetails.abnormal_frames.map((frame, idx) => (
-                        <div key={idx} className="bg-red-50 border-2 border-red-200 rounded-lg overflow-hidden hover:shadow-lg transition-all cursor-pointer group">
-                          <div className="relative aspect-video bg-black">
-                            <img
-                              src={frame.cloudinary_url}
-                              alt={`Abnormal frame ${frame.frame}`}
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                              onError={(e) => {
-                                e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100"%3E%3Crect fill="%23ccc" width="100" height="100"/%3E%3Ctext fill="%23999" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3EImage not available%3C/text%3E%3C/svg%3E';
-                              }}
-                            />
-                            <div className="absolute top-2 left-2 bg-red-600 text-white px-2 py-1 rounded text-xs font-semibold">
-                              Frame #{frame.frame}
+                ) : (
+                  <>
+                    {/* Charts */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      {/* People Count Trend */}
+                      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                        <h3 className="text-lg font-semibold text-gray-900 mb-6">People Count Trend</h3>
+                        <div className="h-80">
+                          {sessionDetails.trends && sessionDetails.trends.length > 0 ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                              <AreaChart data={prepareChartData(sessionDetails.trends)}>
+                                <defs>
+                                  <linearGradient id="colorCountDetail" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                                  </linearGradient>
+                                </defs>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                                <XAxis
+                                  dataKey="frame"
+                                  stroke="#6b7280"
+                                  tick={{ fontSize: 12 }}
+                                  label={{ value: 'Frame', position: 'insideBottom', offset: -5 }}
+                                />
+                                <YAxis
+                                  stroke="#6b7280"
+                                  tick={{ fontSize: 12 }}
+                                  label={{ value: 'People Count', angle: -90, position: 'insideLeft' }}
+                                />
+                                <Tooltip
+                                  contentStyle={{
+                                    backgroundColor: 'white',
+                                    border: '1px solid #e5e7eb',
+                                    borderRadius: '8px'
+                                  }}
+                                />
+                                <Area
+                                  type="monotone"
+                                  dataKey="count"
+                                  stroke="#3b82f6"
+                                  strokeWidth={2}
+                                  fillOpacity={1}
+                                  fill="url(#colorCountDetail)"
+                                />
+                              </AreaChart>
+                            </ResponsiveContainer>
+                          ) : (
+                            <div className="h-full flex items-center justify-center text-gray-400">
+                              <p>No trend data available</p>
                             </div>
-                          </div>
-                          <div className="p-3">
-                            <div className="space-y-2">
-                              <div className="flex items-center justify-between text-xs">
-                                <span className="text-gray-600">People Count</span>
-                                <span className="font-semibold text-gray-900">{frame.human_count || 0}</span>
-                              </div>
-                              <div className="flex items-center justify-between text-xs">
-                                <span className="text-gray-600">SD Violations</span>
-                                <span className="font-semibold text-red-600">{frame.violate_count || 0}</span>
-                              </div>
-                              {frame.restricted_entry && (
-                                <div className="flex items-center gap-1 text-xs text-yellow-600">
-                                  <Shield size={12} />
-                                  <span>Restricted Entry</span>
-                                </div>
-                              )}
-                              {frame.timestamp && (
-                                <div className="text-xs text-gray-500 pt-1 border-t border-gray-200">
-                                  {new Date(frame.timestamp).toLocaleString()}
-                                </div>
-                              )}
-                            </div>
-                          </div>
+                          )}
                         </div>
-                      ))}
+                      </div>
+
+                      {/* Risk Level Distribution */}
+                      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                        <h3 className="text-lg font-semibold text-gray-900 mb-6">Risk Level Distribution</h3>
+                        <div className="h-80">
+                          {getRiskStats(sessionDetails) ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                              <PieChart>
+                                <Pie
+                                  data={getRiskStats(sessionDetails)}
+                                  cx="50%"
+                                  cy="50%"
+                                  labelLine={false}
+                                  label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                                  outerRadius={100}
+                                  dataKey="value"
+                                >
+                                  {getRiskStats(sessionDetails).map((entry, index) => {
+                                    // Dynamic colors for risk
+                                    const colors = {
+                                      "Normal": "#10b981",
+                                      "Busy": "#3b82f6",
+                                      "Warning": "#f59e0b",
+                                      "Critical": "#ef4444"
+                                    };
+                                    return <Cell key={`cell-${index}`} fill={colors[entry.name] || COLORS[index % COLORS.length]} />;
+                                  })}
+                                </Pie>
+                                <Tooltip />
+                                <Legend />
+                              </PieChart>
+                            </ResponsiveContainer>
+                          ) : (
+                            <div className="h-full flex items-center justify-center text-gray-400">
+                              <p>No distribution data available</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                )}
 
-                {/* Remark History Section */}
-                {sessionDetails && (
-                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                    <div className="flex items-center gap-3 mb-6">
-                      <Activity className="text-blue-600" size={24} />
-                      <h3 className="text-lg font-semibold text-gray-900">Remark History & Analytics</h3>
-                      {sessionDetails.aggregated_windows && sessionDetails.aggregated_windows.length > 0 && (
-                        <span className="ml-auto text-sm text-gray-600 bg-blue-100 text-blue-700 px-3 py-1 rounded-full font-medium">
-                          {sessionDetails.aggregated_windows.length} Windows
-                        </span>
-                      )}
+                    {/* Violations Chart */}
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                      <h3 className="text-lg font-semibold text-gray-900 mb-6">Violations</h3>
+                      <div className="h-80">
+                        {sessionDetails.trends && sessionDetails.trends.length > 0 ? (
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={prepareChartData(sessionDetails.trends)}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                              <XAxis
+                                dataKey="frame"
+                                stroke="#6b7280"
+                                tick={{ fontSize: 12 }}
+                                label={{ value: 'Frame', position: 'insideBottom', offset: -5 }}
+                              />
+                              <YAxis
+                                stroke="#6b7280"
+                                tick={{ fontSize: 12 }}
+                                label={{ value: 'Count', angle: -90, position: 'insideLeft' }}
+                              />
+                              <Tooltip
+                                contentStyle={{
+                                  backgroundColor: 'white',
+                                  border: '1px solid #e5e7eb',
+                                  borderRadius: '8px'
+                                }}
+                              />
+                              <Legend />
+                              <Bar dataKey="violations" fill="#ef4444" name="SD Violations" />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        ) : (
+                          <div className="h-full flex items-center justify-center text-gray-400">
+                            <p>No violation data available</p>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
-                    {sessionDetails.aggregated_windows && sessionDetails.aggregated_windows.length > 0 ? (
-                      <>
-
-                        {/* Remarks Timeline */}
-                        <div className="mb-6">
-                          <h4 className="text-sm font-semibold text-gray-700 mb-3">Remarks Timeline</h4>
-                          <div className="space-y-2 max-h-64 overflow-y-auto">
-                            {sessionDetails.aggregated_windows.map((window, idx) => (
-                              <div key={idx} className={`p-3 rounded-lg border-l-4 ${window.severity === 'CRITICAL' ? 'bg-red-50 border-red-500' :
-                                window.severity === 'HIGH' ? 'bg-orange-50 border-orange-500' :
-                                  window.severity === 'MEDIUM' ? 'bg-yellow-50 border-yellow-500' :
-                                    'bg-green-50 border-green-500'
-                                }`} onClick={() => setAlertDrawerOpen(true)}>
-                                <div className="flex items-start justify-between mb-2">
-                                  <div className="flex items-center gap-2">
-                                    <span className={`text-xs font-semibold px-2 py-0.5 rounded ${window.severity === 'CRITICAL' ? 'bg-red-200 text-red-800' :
-                                      window.severity === 'HIGH' ? 'bg-orange-200 text-orange-800' :
-                                        window.severity === 'MEDIUM' ? 'bg-yellow-200 text-yellow-800' :
-                                          'bg-green-200 text-green-800'
-                                      }`}>
-                                      {window.severity}
-                                    </span>
-                                    <span className="text-xs text-gray-500">
-                                      {window.window_start ? (typeof window.window_start === 'string' ? new Date(window.window_start).toLocaleTimeString() : new Date(window.window_start).toLocaleTimeString()) : 'N/A'} - {window.window_end ? (typeof window.window_end === 'string' ? new Date(window.window_end).toLocaleTimeString() : new Date(window.window_end).toLocaleTimeString()) : 'N/A'}
-                                    </span>
+                    {/* Abnormal Frames Gallery */}
+                    {sessionDetails.abnormal_frames && sessionDetails.abnormal_frames.length > 0 && (
+                      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                        <div className="flex items-center justify-between mb-6">
+                          <div className="flex items-center gap-3">
+                            <AlertTriangle className="text-red-500" size={24} />
+                            <h3 className="text-lg font-semibold text-gray-900">Abnormal Activity Frames</h3>
+                          </div>
+                          <span className="text-sm text-gray-600 bg-red-100 text-red-700 px-3 py-1 rounded-full font-medium">
+                            {sessionDetails.abnormal_frames.length} {sessionDetails.abnormal_frames.length === 1 ? 'Frame' : 'Frames'}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                          {sessionDetails.abnormal_frames.map((frame, idx) => (
+                            <div key={idx} className="bg-red-50 border-2 border-red-200 rounded-lg overflow-hidden hover:shadow-lg transition-all cursor-pointer group">
+                              <div className="relative aspect-video bg-black">
+                                <img
+                                  src={frame.cloudinary_url}
+                                  alt={`Abnormal frame ${frame.frame}`}
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                                  onError={(e) => {
+                                    e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100"%3E%3Crect fill="%23ccc" width="100" height="100"/%3E%3Ctext fill="%23999" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3EImage not available%3C/text%3E%3C/svg%3E';
+                                  }}
+                                />
+                                <div className="absolute top-2 left-2 bg-red-600 text-white px-2 py-1 rounded text-xs font-semibold">
+                                  Frame #{frame.frame}
+                                </div>
+                              </div>
+                              <div className="p-3">
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between text-xs">
+                                    <span className="text-gray-600">People Count</span>
+                                    <span className="font-semibold text-gray-900">{frame.human_count || 0}</span>
                                   </div>
-                                </div>
-                                <p className="text-sm text-gray-800 font-medium mb-2">{window.remark}</p>
-                                <div className="flex items-center gap-4 text-xs text-gray-600">
-                                  <span>👥 Avg: {window.avg_human_count?.toFixed(1) || 0} | Max: {window.max_human_count || 0}</span>
-                                  <span>📈 Growth: {window.crowd_growth_rate ? (window.crowd_growth_rate * 100).toFixed(1) + '%' : '0%'}</span>
-                                  <span>⚡ Fast Motion: {window.avg_fast_motion_ratio ? (window.avg_fast_motion_ratio * 100).toFixed(0) + '%' : '0%'}</span>
+                                  <div className="flex items-center justify-between text-xs">
+                                    <span className="text-gray-600">SD Violations</span>
+                                    <span className="font-semibold text-red-600">{frame.violate_count || 0}</span>
+                                  </div>
+                                  {frame.restricted_entry && (
+                                    <div className="flex items-center gap-1 text-xs text-yellow-600">
+                                      <Shield size={12} />
+                                      <span>Restricted Entry</span>
+                                    </div>
+                                  )}
+                                  {frame.timestamp && (
+                                    <div className="text-xs text-gray-500 pt-1 border-t border-gray-200">
+                                      {new Date(frame.timestamp).toLocaleString()}
+                                    </div>
+                                  )}
                                 </div>
                               </div>
-                            ))}
-                          </div>
+                            </div>
+                          ))}
                         </div>
-
-                        {/* Numerical Data Graphs */}
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                          {/* Crowd Count Over Time */}
-                          <div>
-                            <h4 className="text-sm font-semibold text-gray-700 mb-4">Crowd Count Trend</h4>
-                            <div className="h-64">
-                              <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart data={sessionDetails.aggregated_windows.map((w, idx) => ({
-                                  time: w.window_end ? (typeof w.window_end === 'string' ? new Date(w.window_end).toLocaleTimeString() : new Date(w.window_end).toLocaleTimeString()) : `Window ${idx + 1}`,
-                                  avg: w.avg_human_count || 0,
-                                  max: w.max_human_count || 0
-                                }))}>
-                                  <defs>
-                                    <linearGradient id="colorAvg" x1="0" y1="0" x2="0" y2="1">
-                                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                                    </linearGradient>
-                                    <linearGradient id="colorMax" x1="0" y1="0" x2="0" y2="1">
-                                      <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3} />
-                                      <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
-                                    </linearGradient>
-                                  </defs>
-                                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                                  <XAxis
-                                    dataKey="time"
-                                    stroke="#6b7280"
-                                    tick={{ fontSize: 10 }}
-                                    angle={-45}
-                                    textAnchor="end"
-                                    height={60}
-                                  />
-                                  <YAxis stroke="#6b7280" tick={{ fontSize: 12 }} />
-                                  <Tooltip />
-                                  <Legend />
-                                  <Area type="monotone" dataKey="avg" stroke="#3b82f6" fillOpacity={1} fill="url(#colorAvg)" name="Avg Count" />
-                                  <Area type="monotone" dataKey="max" stroke="#ef4444" fillOpacity={1} fill="url(#colorMax)" name="Max Count" />
-                                </AreaChart>
-                              </ResponsiveContainer>
-                            </div>
-                          </div>
-
-                          {/* Motion Speed & Fast Motion Ratio */}
-                          <div>
-                            <h4 className="text-sm font-semibold text-gray-700 mb-4">Motion Analysis</h4>
-                            <div className="h-64">
-                              <ResponsiveContainer width="100%" height="100%">
-                                <LineChart data={sessionDetails.aggregated_windows.map((w, idx) => ({
-                                  time: w.window_end ? (typeof w.window_end === 'string' ? new Date(w.window_end).toLocaleTimeString() : new Date(w.window_end).toLocaleTimeString()) : `Window ${idx + 1}`,
-                                  speed: w.avg_motion_speed || 0,
-                                  fastRatio: (w.avg_fast_motion_ratio || 0) * 100
-                                }))}>
-                                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                                  <XAxis
-                                    dataKey="time"
-                                    stroke="#6b7280"
-                                    tick={{ fontSize: 10 }}
-                                    angle={-45}
-                                    textAnchor="end"
-                                    height={60}
-                                  />
-                                  <YAxis yAxisId="left" stroke="#6b7280" tick={{ fontSize: 12 }} />
-                                  <YAxis yAxisId="right" orientation="right" stroke="#f59e0b" tick={{ fontSize: 12 }} />
-                                  <Tooltip />
-                                  <Legend />
-                                  <Line yAxisId="left" type="monotone" dataKey="speed" stroke="#3b82f6" strokeWidth={2} name="Avg Speed" />
-                                  <Line yAxisId="right" type="monotone" dataKey="fastRatio" stroke="#f59e0b" strokeWidth={2} name="Fast Motion %" />
-                                </LineChart>
-                              </ResponsiveContainer>
-                            </div>
-                          </div>
-
-                          {/* Density Score */}
-                          <div>
-                            <h4 className="text-sm font-semibold text-gray-700 mb-4">Crowd Density Score</h4>
-                            <div className="h-64">
-                              <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={sessionDetails.aggregated_windows.map((w, idx) => ({
-                                  time: w.window_end ? (typeof w.window_end === 'string' ? new Date(w.window_end).toLocaleTimeString() : new Date(w.window_end).toLocaleTimeString()) : `Window ${idx + 1}`,
-                                  density: w.max_density_score || 0
-                                }))}>
-                                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                                  <XAxis
-                                    dataKey="time"
-                                    stroke="#6b7280"
-                                    tick={{ fontSize: 10 }}
-                                    angle={-45}
-                                    textAnchor="end"
-                                    height={60}
-                                  />
-                                  <YAxis stroke="#6b7280" tick={{ fontSize: 12 }} />
-                                  <Tooltip />
-                                  <Bar dataKey="density" fill="#8b5cf6" name="Max Density" />
-                                </BarChart>
-                              </ResponsiveContainer>
-                            </div>
-                          </div>
-
-                          {/* Crowd Growth Rate */}
-                          <div>
-                            <h4 className="text-sm font-semibold text-gray-700 mb-4">Crowd Growth Rate</h4>
-                            <div className="h-64">
-                              <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart data={sessionDetails.aggregated_windows.map((w, idx) => ({
-                                  time: w.window_end ? (typeof w.window_end === 'string' ? new Date(w.window_end).toLocaleTimeString() : new Date(w.window_end).toLocaleTimeString()) : `Window ${idx + 1}`,
-                                  growth: (w.crowd_growth_rate || 0) * 100
-                                }))}>
-                                  <defs>
-                                    <linearGradient id="colorGrowth" x1="0" y1="0" x2="0" y2="1">
-                                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
-                                      <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                                    </linearGradient>
-                                  </defs>
-                                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                                  <XAxis
-                                    dataKey="time"
-                                    stroke="#6b7280"
-                                    tick={{ fontSize: 10 }}
-                                    angle={-45}
-                                    textAnchor="end"
-                                    height={60}
-                                  />
-                                  <YAxis stroke="#6b7280" tick={{ fontSize: 12 }} />
-                                  <Tooltip formatter={(value) => `${value.toFixed(1)}%`} />
-                                  <Area type="monotone" dataKey="growth" stroke="#10b981" fillOpacity={1} fill="url(#colorGrowth)" name="Growth Rate %" />
-                                </AreaChart>
-                              </ResponsiveContainer>
-                            </div>
-                          </div>
-                        </div>
-                      </>
-                    ) : (
-                      <div className="text-center py-12">
-                        <Activity className="mx-auto text-gray-300 mb-3" size={48} />
-                        <p className="text-sm text-gray-500 mb-2">No aggregated data available yet</p>
-                        <p className="text-xs text-gray-400">Aggregation runs every 5 seconds. Data will appear here once windows are processed.</p>
                       </div>
                     )}
-                  </div>
+
+                    {/* Remark History Section */}
+                    {sessionDetails && (
+                      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                        <div className="flex items-center gap-3 mb-6">
+                          <Activity className="text-blue-600" size={24} />
+                          <h3 className="text-lg font-semibold text-gray-900">Remark History & Analytics</h3>
+                          {sessionDetails.aggregated_windows && sessionDetails.aggregated_windows.length > 0 && (
+                            <span className="ml-auto text-sm text-gray-600 bg-blue-100 text-blue-700 px-3 py-1 rounded-full font-medium">
+                              {sessionDetails.aggregated_windows.length} Windows
+                            </span>
+                          )}
+                        </div>
+
+                        {sessionDetails.aggregated_windows && sessionDetails.aggregated_windows.length > 0 ? (
+                          <>
+
+                            {/* Remarks Timeline */}
+                            <div className="mb-6">
+                              <h4 className="text-sm font-semibold text-gray-700 mb-3">Remarks Timeline</h4>
+                              <div className="space-y-2 max-h-64 overflow-y-auto">
+                                {sessionDetails.aggregated_windows.map((window, idx) => (
+                                  <div key={idx} className={`p-3 rounded-lg border-l-4 ${window.severity === 'CRITICAL' ? 'bg-red-50 border-red-500' :
+                                    window.severity === 'HIGH' ? 'bg-orange-50 border-orange-500' :
+                                      window.severity === 'MEDIUM' ? 'bg-yellow-50 border-yellow-500' :
+                                        'bg-green-50 border-green-500'
+                                    }`} onClick={() => setAlertDrawerOpen(true)}>
+                                    <div className="flex items-start justify-between mb-2">
+                                      <div className="flex items-center gap-2">
+                                        <span className={`text-xs font-semibold px-2 py-0.5 rounded ${window.severity === 'CRITICAL' ? 'bg-red-200 text-red-800' :
+                                          window.severity === 'HIGH' ? 'bg-orange-200 text-orange-800' :
+                                            window.severity === 'MEDIUM' ? 'bg-yellow-200 text-yellow-800' :
+                                              'bg-green-200 text-green-800'
+                                          }`}>
+                                          {window.severity}
+                                        </span>
+                                        <span className="text-xs text-gray-500">
+                                          {window.window_start ? (typeof window.window_start === 'string' ? new Date(window.window_start).toLocaleTimeString() : new Date(window.window_start).toLocaleTimeString()) : 'N/A'} - {window.window_end ? (typeof window.window_end === 'string' ? new Date(window.window_end).toLocaleTimeString() : new Date(window.window_end).toLocaleTimeString()) : 'N/A'}
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <p className="text-sm text-gray-800 font-medium mb-2">{window.remark}</p>
+                                    <div className="flex items-center gap-4 text-xs text-gray-600">
+                                      <span>👥 Avg: {window.avg_human_count?.toFixed(1) || 0} | Max: {window.max_human_count || 0}</span>
+                                      <span>📈 Growth: {window.crowd_growth_rate ? (window.crowd_growth_rate * 100).toFixed(1) + '%' : '0%'}</span>
+                                      <span>⚡ Fast Motion: {window.avg_fast_motion_ratio ? (window.avg_fast_motion_ratio * 100).toFixed(0) + '%' : '0%'}</span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Numerical Data Graphs */}
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                              {/* Crowd Count Over Time */}
+                              <div>
+                                <h4 className="text-sm font-semibold text-gray-700 mb-4">Crowd Count Trend</h4>
+                                <div className="h-64">
+                                  <ResponsiveContainer width="100%" height="100%">
+                                    <AreaChart data={sessionDetails.aggregated_windows.map((w, idx) => ({
+                                      time: w.window_end ? (typeof w.window_end === 'string' ? new Date(w.window_end).toLocaleTimeString() : new Date(w.window_end).toLocaleTimeString()) : `Window ${idx + 1}`,
+                                      avg: w.avg_human_count || 0,
+                                      max: w.max_human_count || 0
+                                    }))}>
+                                      <defs>
+                                        <linearGradient id="colorAvg" x1="0" y1="0" x2="0" y2="1">
+                                          <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                                          <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                                        </linearGradient>
+                                        <linearGradient id="colorMax" x1="0" y1="0" x2="0" y2="1">
+                                          <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3} />
+                                          <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+                                        </linearGradient>
+                                      </defs>
+                                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                                      <XAxis
+                                        dataKey="time"
+                                        stroke="#6b7280"
+                                        tick={{ fontSize: 10 }}
+                                        angle={-45}
+                                        textAnchor="end"
+                                        height={60}
+                                      />
+                                      <YAxis stroke="#6b7280" tick={{ fontSize: 12 }} />
+                                      <Tooltip />
+                                      <Legend />
+                                      <Area type="monotone" dataKey="avg" stroke="#3b82f6" fillOpacity={1} fill="url(#colorAvg)" name="Avg Count" />
+                                      <Area type="monotone" dataKey="max" stroke="#ef4444" fillOpacity={1} fill="url(#colorMax)" name="Max Count" />
+                                    </AreaChart>
+                                  </ResponsiveContainer>
+                                </div>
+                              </div>
+
+                              {/* Motion Speed & Fast Motion Ratio */}
+                              <div>
+                                <h4 className="text-sm font-semibold text-gray-700 mb-4">Motion Analysis</h4>
+                                <div className="h-64">
+                                  <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart data={sessionDetails.aggregated_windows.map((w, idx) => ({
+                                      time: w.window_end ? (typeof w.window_end === 'string' ? new Date(w.window_end).toLocaleTimeString() : new Date(w.window_end).toLocaleTimeString()) : `Window ${idx + 1}`,
+                                      speed: w.avg_motion_speed || 0,
+                                      fastRatio: (w.avg_fast_motion_ratio || 0) * 100
+                                    }))}>
+                                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                                      <XAxis
+                                        dataKey="time"
+                                        stroke="#6b7280"
+                                        tick={{ fontSize: 10 }}
+                                        angle={-45}
+                                        textAnchor="end"
+                                        height={60}
+                                      />
+                                      <YAxis yAxisId="left" stroke="#6b7280" tick={{ fontSize: 12 }} />
+                                      <YAxis yAxisId="right" orientation="right" stroke="#f59e0b" tick={{ fontSize: 12 }} />
+                                      <Tooltip />
+                                      <Legend />
+                                      <Line yAxisId="left" type="monotone" dataKey="speed" stroke="#3b82f6" strokeWidth={2} name="Avg Speed" />
+                                      <Line yAxisId="right" type="monotone" dataKey="fastRatio" stroke="#f59e0b" strokeWidth={2} name="Fast Motion %" />
+                                    </LineChart>
+                                  </ResponsiveContainer>
+                                </div>
+                              </div>
+
+                              {/* Density Score */}
+                              <div>
+                                <h4 className="text-sm font-semibold text-gray-700 mb-4">Crowd Density Score</h4>
+                                <div className="h-64">
+                                  <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={sessionDetails.aggregated_windows.map((w, idx) => ({
+                                      time: w.window_end ? (typeof w.window_end === 'string' ? new Date(w.window_end).toLocaleTimeString() : new Date(w.window_end).toLocaleTimeString()) : `Window ${idx + 1}`,
+                                      density: w.max_density_score || 0
+                                    }))}>
+                                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                                      <XAxis
+                                        dataKey="time"
+                                        stroke="#6b7280"
+                                        tick={{ fontSize: 10 }}
+                                        angle={-45}
+                                        textAnchor="end"
+                                        height={60}
+                                      />
+                                      <YAxis stroke="#6b7280" tick={{ fontSize: 12 }} />
+                                      <Tooltip />
+                                      <Bar dataKey="density" fill="#8b5cf6" name="Max Density" />
+                                    </BarChart>
+                                  </ResponsiveContainer>
+                                </div>
+                              </div>
+
+                              {/* Crowd Growth Rate */}
+                              <div>
+                                <h4 className="text-sm font-semibold text-gray-700 mb-4">Crowd Growth Rate</h4>
+                                <div className="h-64">
+                                  <ResponsiveContainer width="100%" height="100%">
+                                    <AreaChart data={sessionDetails.aggregated_windows.map((w, idx) => ({
+                                      time: w.window_end ? (typeof w.window_end === 'string' ? new Date(w.window_end).toLocaleTimeString() : new Date(w.window_end).toLocaleTimeString()) : `Window ${idx + 1}`,
+                                      growth: (w.crowd_growth_rate || 0) * 100
+                                    }))}>
+                                      <defs>
+                                        <linearGradient id="colorGrowth" x1="0" y1="0" x2="0" y2="1">
+                                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                                          <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                                        </linearGradient>
+                                      </defs>
+                                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                                      <XAxis
+                                        dataKey="time"
+                                        stroke="#6b7280"
+                                        tick={{ fontSize: 10 }}
+                                        angle={-45}
+                                        textAnchor="end"
+                                        height={60}
+                                      />
+                                      <YAxis stroke="#6b7280" tick={{ fontSize: 12 }} />
+                                      <Tooltip formatter={(value) => `${value.toFixed(1)}%`} />
+                                      <Area type="monotone" dataKey="growth" stroke="#10b981" fillOpacity={1} fill="url(#colorGrowth)" name="Growth Rate %" />
+                                    </AreaChart>
+                                  </ResponsiveContainer>
+                                </div>
+                              </div>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="text-center py-12">
+                            <Activity className="mx-auto text-gray-300 mb-3" size={48} />
+                            <p className="text-sm text-gray-500 mb-2">No aggregated data available yet</p>
+                            <p className="text-xs text-gray-400">Aggregation runs every 5 seconds. Data will appear here once windows are processed.</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Ask Drishti assistant (session mode) */}
+                    <AskAssistant sessionId={selectedSession} mode="session" />
+
+                    {/* No Abnormal Statistics block */}
+                  </>
                 )}
-
-                {/* Ask Drishti assistant (session mode) */}
-                <AskAssistant sessionId={selectedSession} mode="session" />
-
-                {/* No Abnormal Statistics block */}
               </>
             ) : (
               <div className="flex items-center justify-center h-96">

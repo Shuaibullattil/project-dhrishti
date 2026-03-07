@@ -60,7 +60,7 @@ def run_processing(video_path, session_id=None, callback=None):
     
     # Stop creating local folders and CSVs. 
     # video_process now returns VID_FPS and collected_movement_data
-    vid_fps, movement_data = video_process(cap, FRAME_SIZE, net, ln, encoder, tracker, None, None, callback, session_id)
+    vid_fps, movement_data, heatmap_url = video_process(cap, FRAME_SIZE, net, ln, encoder, tracker, None, None, callback, session_id)
     
     total_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
     
@@ -85,9 +85,12 @@ def run_processing(video_path, session_id=None, callback=None):
             video_data["DATA_RECORD_FRAME"], 
             FRAME_SIZE, 
             TRACK_MAX_AGE
-        )
+            )
         if orig_stats and clean_stats:
             db.insert_abnormal_stats(session_id, orig_stats, clean_stats)
+            
+        if heatmap_url:
+            db.update_session_heatmap(session_id, heatmap_url)
             
     cap.release()
     
@@ -142,6 +145,7 @@ def get_analysis_results(session_id):
         "meta": session.get("video_meta", {}),
         "summary": summary,
         "movement_data": session.get("movement_data", []),
+        "heatmap_url": session.get("heatmap_url", None),
         "trends": processed_trends,
         "images": {
             "crowd_statistics_time": "" # No local images anymore

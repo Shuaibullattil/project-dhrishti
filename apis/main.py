@@ -36,6 +36,7 @@ from db import db
 from aggregator import run_window_aggregator, set_remark_broadcast_callback
 from app.routers.ai_analysis import router as ai_analysis_router
 from contextlib import asynccontextmanager
+from video_process import set_heatmap_enabled
 
 # Background task control
 aggregation_task = None
@@ -217,7 +218,16 @@ async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     try:
         while True:
-            await websocket.receive_text()
+            data = await websocket.receive_text()
+            try:
+                msg = json.loads(data)
+                if msg.get("type") == "heatmap_toggle":
+                    session_id = msg.get("session_id")
+                    enabled = msg.get("enabled", False)
+                    if session_id:
+                        set_heatmap_enabled(session_id, enabled)
+            except json.JSONDecodeError:
+                pass
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 
@@ -248,7 +258,8 @@ async def get_session_details(session_id: str):
         "trends": analysis["trends"],
         "abnormal_stats": abnormal_stats,
         "abnormal_frames": abnormal_frames,
-        "aggregated_windows": aggregated_windows
+        "aggregated_windows": aggregated_windows,
+        "heatmap_url": analysis.get("heatmap_url")
     }
 
 @app.delete("/sessions/{session_id}")
@@ -260,6 +271,15 @@ async def delete_session(session_id: str):
         return {"message": f"Session {session_id} deleted successfully"}
     else:
         return {"error": "Failed to delete session"}
+
+@app.get("/sessions/{session_id}/heatmap")
+async def get_session_heatmap(session_id: str):
+    session = db.get_session(session_id)
+    if not session:
+        return {"heatmap_url": None, "error": "Session not found"}
+        
+    heatmap_url = session.get("heatmap_url")
+    return {"heatmap_url": heatmap_url}
 
 @app.post("/aggregate/run")
 async def run_aggregation():

@@ -140,6 +140,12 @@ class MongoDB:
             }}
         )
 
+    def update_session_heatmap(self, session_id, heatmap_url):
+        self.sessions.update_one(
+            {"session_id": session_id},
+            {"$set": {"heatmap_url": heatmap_url}}
+        )
+
     def fail_session(self, session_id, error):
         self.sessions.update_one(
             {"session_id": session_id},

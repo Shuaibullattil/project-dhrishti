@@ -33,6 +33,16 @@ except ImportError as e:
 IS_CAM = VIDEO_CONFIG["IS_CAM"]
 HIGH_CAM = VIDEO_CONFIG["HIGH_CAM"]
 
+# Heatmap State Management
+HEATMAP_POINTS = {}
+HEATMAP_ENABLED = {}
+HEATMAP_BGS = {}
+
+def set_heatmap_enabled(session_id, enabled):
+	"""Toggle heatmap streaming over websocket for a session."""
+	HEATMAP_ENABLED[session_id] = enabled
+
+
 def _record_movement_data(movement_data_writer, movement):
 	if movement_data_writer is None:
 		if hasattr(movement, 'positions'): # Track object
@@ -129,6 +139,10 @@ def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writ
 		else:  # Horizontal video (landscape)
 			frame = imutils.resize(frame, width=frame_size)
 
+		if session_id and session_id not in HEATMAP_BGS:
+			HEATMAP_BGS[session_id] = frame.copy()
+
+
 		# Get current time
 		current_datetime = datetime.datetime.now()
 
@@ -172,6 +186,12 @@ def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writ
 				[cx, cy] = list(map(int, track.positions[-1]))
 				# Get object id
 				idx = track.track_id
+				
+				# Record heatmap point
+				if session_id:
+					if session_id not in HEATMAP_POINTS:
+						HEATMAP_POINTS[session_id] = []
+					HEATMAP_POINTS[session_id].append([cx, cy])
 				# Check for social distance violation
 				if SD_CHECK:
 					if len(humans_detected) >= 2:
@@ -334,8 +354,15 @@ def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writ
 				"abnormal": False,  # Note: Retained key temporarily for frontend compat
 				"restricted_entry": RE,
 				"frame": frame_count,
-				"frame_image": frame_base64  # Base64 encoded JPEG image
+				"frame_image": frame_base64,  # Base64 encoded JPEG image
+				"frame_width": w,
+				"frame_height": h
 			}
+			
+			if session_id and HEATMAP_ENABLED.get(session_id, False):
+				callback_data["heatmap_points"] = HEATMAP_POINTS.get(session_id, [])
+			else:
+				callback_data["heatmap_points"] = []
 			
 			callback(callback_data)
 
@@ -349,4 +376,67 @@ def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writ
 			break
 	
 	cv2.destroyAllWindows()
-	return VID_FPS, collected_movement_data
+	
+	heatmap_url = None
+	# Generate Final Heatmap Image
+	if session_id and session_id in HEATMAP_POINTS and len(HEATMAP_POINTS[session_id]) > 0:
+		try:
+			# We need the actual frame dimensions from the last frame
+			if session_id in HEATMAP_BGS:
+				bg_frame = HEATMAP_BGS[session_id]
+				map_h, map_w = bg_frame.shape[:2]
+			elif 'frame' in locals() and frame is not None:
+				bg_frame = frame.copy()
+				map_h, map_w = frame.shape[:2]
+			else:
+				# fallback defaults
+				map_h, map_w = 480, 640
+				bg_frame = np.zeros((map_h, map_w, 3), dtype=np.uint8)
+
+			# Create an empty heatmap matrix
+			heatmap_matrix = np.zeros((map_h, map_w), dtype=np.float32)
+			
+			# Accumulate points
+			for px, py in HEATMAP_POINTS[session_id]:
+				if 0 <= py < map_h and 0 <= px < map_w:
+					heatmap_matrix[py, px] += 1
+			
+			# Apply Gaussian Blur
+			heatmap_blur = cv2.GaussianBlur(heatmap_matrix, (0, 0), sigmaX=31, sigmaY=31)
+			
+			# Normalize
+			heatmap_norm = cv2.normalize(heatmap_blur, None, 0, 255, cv2.NORM_MINMAX)
+			heatmap_norm = heatmap_norm.astype(np.uint8)
+			
+			# Apply colormap
+			heatmap_color = cv2.applyColorMap(heatmap_norm, cv2.COLORMAP_JET)
+			
+			# Create mask to avoid tinting areas with zero heat
+			mask = heatmap_norm > 10
+			
+			# Blend with original frame
+			alpha = 0.6
+			final_heatmap = bg_frame.copy()
+			
+			# Apply color map only to the regions with heat
+			for c in range(3):
+				final_heatmap[:, :, c] = np.where(
+					mask,
+					cv2.addWeighted(bg_frame[:, :, c], 1 - alpha, heatmap_color[:, :, c], alpha, 0),
+					bg_frame[:, :, c]
+				)
+			
+			# Upload to cloudinary
+			if cloudinary_available:
+				heatmap_url = upload_frame_to_cloudinary(final_heatmap, session_id, "heatmap", folder="heatmaps")
+		except Exception as e:
+			print(f"Failed to generate and upload heatmap: {e}")
+		finally:
+			# Memory cleanup
+			del HEATMAP_POINTS[session_id]
+			if session_id in HEATMAP_ENABLED:
+				del HEATMAP_ENABLED[session_id]
+			if session_id in HEATMAP_BGS:
+				del HEATMAP_BGS[session_id]
+
+	return VID_FPS, collected_movement_data, heatmap_url
