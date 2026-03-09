@@ -13,9 +13,25 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from db import db
 from app.services.risk_engine import RiskEngine
+import requests
+import cv2
+import numpy as np
+import sys
+
+# Ensure we use the exact same module instance as the main application to access shared state
+if "video_process" in sys.modules:
+    video_process = sys.modules["video_process"]
+else:
+    try:
+        import video_process
+    except ImportError:
+        from crowd_analysis import video_process
 
 # Global callback for broadcasting remarks (set by main.py)
 _remark_broadcast_callback: Optional[Callable] = None
+
+# Global automation alert tracking to prevent spam (session_id -> bool)
+ALERT_TRIGGERED: Dict[str, bool] = {}
 
 def set_remark_broadcast_callback(callback: Callable):
     """Set the callback function for broadcasting remarks via WebSocket."""
@@ -263,6 +279,88 @@ def process_session_window(session_id: str) -> bool:
             print(f"[{session_id}] Triggered context risk snapshot at frame {latest_frame_idx}")
         except Exception:
             pass
+
+    # Automation Alert Integration using n8n
+    if risk_result["risk_level"] == "CRITICAL" and not ALERT_TRIGGERED.get(session_id, False):
+        try:
+            print(f"[{session_id}] CRITICAL risk detected. Triggering automation alert.")
+            
+            # 1. Generate mid-session heatmap snapshot
+            heatmap_path = None
+            if session_id in video_process.HEATMAP_BGS:
+                bg_frame = video_process.HEATMAP_BGS[session_id]
+                final_heatmap = bg_frame.copy()
+                
+                if session_id in video_process.HEATMAP_POINTS and len(video_process.HEATMAP_POINTS[session_id]) > 0:
+                    map_h, map_w = bg_frame.shape[:2]
+                    heatmap_matrix = np.zeros((map_h, map_w), dtype=np.float32)
+                    
+                    for px, py in video_process.HEATMAP_POINTS[session_id]:
+                        if 0 <= py < map_h and 0 <= px < map_w:
+                            heatmap_matrix[py, px] += 1
+                    
+                    heatmap_blur = cv2.GaussianBlur(heatmap_matrix, (0, 0), sigmaX=31, sigmaY=31)
+                    heatmap_norm = cv2.normalize(heatmap_blur, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+                    heatmap_color = cv2.applyColorMap(heatmap_norm, cv2.COLORMAP_JET)
+                    
+                    mask = heatmap_norm > 10
+                    alpha = 0.6
+                    
+                    for c in range(3):
+                        final_heatmap[:, :, c] = np.where(
+                            mask,
+                            cv2.addWeighted(bg_frame[:, :, c], 1 - alpha, heatmap_color[:, :, c], alpha, 0),
+                            bg_frame[:, :, c]
+                        )
+                
+                # Save locally instead of cloud
+                heatmap_path = f"alert_heatmap_{session_id}.png"
+                cv2.imwrite(heatmap_path, final_heatmap)
+                print(f"[{session_id}] Generated local mid-session snapshot: {heatmap_path}")
+            
+            # 2. Prepare Webhook Payload for Multipart
+            payload = {
+                "session_id": session_id,
+                "session_name": session.get("filename", "Unknown") if session else "Unknown",
+                "risk_level": risk_result["risk_level"],
+                "people_count": aggregated["avg_human_count"],
+                "timestamp": str(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+            }
+
+            # 3. Send Webhook
+            try:
+                if heatmap_path and os.path.exists(heatmap_path):
+                    with open(heatmap_path, "rb") as f:
+                        files = {"heatmap": (os.path.basename(heatmap_path), f, "image/png")}
+                        # Fire and forget with short timeout
+                        requests.post("http://localhost:5678/webhook/drishti-alert", data=payload, files=files, timeout=3)
+                else:
+                    # Send metadata only if image failed
+                    requests.post("http://localhost:5678/webhook/drishti-alert", data=payload, timeout=3)
+            except Exception as e:
+                print(f"[{session_id}] n8n Webhook failed: {e}")
+            finally:
+                if heatmap_path and os.path.exists(heatmap_path):
+                    try:
+                        os.remove(heatmap_path)
+                    except:
+                        pass
+            
+            # 4. Mark tracking flag and UI trigger
+            ALERT_TRIGGERED[session_id] = True
+            
+            if _remark_broadcast_callback:
+                import json
+                alert_msg = {
+                    "file_id": session_id,
+                    "type": "automation_alert_sent",
+                    "risk_level": risk_result["risk_level"],
+                    "session_id": session_id
+                }
+                _remark_broadcast_callback(json.dumps(alert_msg, default=str))
+
+        except Exception as e:
+            print(f"[{session_id}] Error in automation alert sequence: {e}")
     
     # Generate remark based on risk flags
     flags = risk_result["risk_flags"]

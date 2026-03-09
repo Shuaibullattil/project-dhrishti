@@ -46,6 +46,7 @@ function App() {
     clustering: '',
     goal: ''
   });
+  const [automationAlert, setAutomationAlert] = useState(null);
 
   const ws = useRef(null);
   const [historicalTab, setHistoricalTab] = useState('video');
@@ -113,6 +114,15 @@ function App() {
                 }
                 return prev;
               });
+            } else if (msg.type === 'automation_alert_sent') {
+              setAutomationAlert({
+                risk_level: msg.risk_level,
+                timestamp: new Date().toLocaleTimeString()
+              });
+              // Auto-dismiss after 8 seconds
+              setTimeout(() => {
+                setAutomationAlert(null);
+              }, 8000);
             }
           }
         };
@@ -427,6 +437,32 @@ function App() {
           </div>
         </div>
       </aside>
+
+      {/* Automation Alert Toast */}
+      {automationAlert && (
+        <div className="fixed top-6 right-6 z-50 animate-bounce">
+          <div className="bg-red-500 border border-red-600 shadow-xl rounded-lg p-4 max-w-sm flex items-start gap-4 text-white">
+            <div className="p-2 bg-red-600 rounded-full">
+              <AlertTriangle size={24} className="text-white" />
+            </div>
+            <div className="flex-1">
+              <h4 className="font-bold text-lg mb-1">🚨 Automation Alert Sent</h4>
+              <p className="text-sm text-red-100">
+                Critical crowd surge detected. Authorities notified through automation workflow.
+              </p>
+              <div className="mt-2 text-xs font-semibold px-2 py-1 bg-red-600 rounded inline-block">
+                Risk Level: {automationAlert.risk_level}
+              </div>
+            </div>
+            <button
+              onClick={() => setAutomationAlert(null)}
+              className="text-red-200 hover:text-white"
+            >
+              <XCircle size={20} />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main Content */}
       <main className="flex-1 ml-80 p-8 min-h-screen">
