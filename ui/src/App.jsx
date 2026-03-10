@@ -11,13 +11,204 @@ import AlertExplanationDrawer from './components/ai/AlertExplanationDrawer';
 import AskAssistant from './components/ai/AskAssistant';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-  ResponsiveContainer, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell
+  ResponsiveContainer, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
+  RadialBarChart, RadialBar
 } from 'recharts';
 
 const API_BASE = import.meta.env?.VITE_API_BASE_URL || "http://localhost:8000";
 const WS_URL = "ws://localhost:8000/ws";
 
 const COLORS = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6'];
+
+const riskMapping = {
+  'NORMAL': 0.25,
+  'BUSY': 0.5,
+  'WARNING': 0.75,
+  'CRITICAL': 1.0
+};
+
+const getRiskLabel = (score) => {
+  if (score <= 0.25) return 'NORMAL';
+  if (score <= 0.5) return 'BUSY';
+  if (score <= 0.75) return 'WARNING';
+  return 'CRITICAL';
+};
+
+const riskScaleMapping = {
+  'NORMAL': 0,
+  'BUSY': 1,
+  'WARNING': 2,
+  'CRITICAL': 3
+};
+
+const getRiskColor = (level) => {
+  switch (level) {
+    case 'NORMAL': return '#22c55e';
+    case 'BUSY': return '#facc15';
+    case 'WARNING': return '#fb923c';
+    case 'CRITICAL': return '#ef4444';
+    default: return '#22c55e';
+  }
+};
+
+const CustomYAxisTick = ({ x, y, payload }) => {
+  const labels = ['NORMAL', 'BUSY', 'WARNING', 'CRITICAL'];
+  const label = labels[payload.value];
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <text
+        x={0}
+        y={0}
+        dy={4}
+        textAnchor="end"
+        fill={getRiskColor(label)}
+        fontSize={10}
+        fontWeight="bold"
+      >
+        {label}
+      </text>
+    </g>
+  );
+};
+
+const CustomDot = (props) => {
+  const { cx, cy, payload } = props;
+  if (!cx || !cy) return null;
+  return (
+    <circle
+      cx={cx}
+      cy={cy}
+      r={6}
+      fill={getRiskColor(payload.level)}
+      stroke="#fff"
+      strokeWidth={2}
+    />
+  );
+};
+
+const RiskGauge = ({ level }) => {
+  const score = riskMapping[level] || 0.25;
+  const data = [{ name: 'Risk', value: score * 100, fill: getRiskColor(level) }];
+
+  return (
+    <div className="h-48 w-full relative flex flex-col items-center justify-center">
+      <ResponsiveContainer width="100%" height="100%">
+        <RadialBarChart
+          cx="50%"
+          cy="70%"
+          innerRadius="60%"
+          outerRadius="100%"
+          barSize={20}
+          data={data}
+          startAngle={180}
+          endAngle={0}
+        >
+          <RadialBar
+            minAngle={15}
+            background={{ fill: '#f3f4f6' }}
+            clockWise
+            dataKey="value"
+            cornerRadius={10}
+            isAnimationActive={true}
+            animationDuration={500}
+          />
+        </RadialBarChart>
+      </ResponsiveContainer>
+      <div className="absolute bottom-10 flex flex-col items-center">
+        <span className="text-2xl font-black uppercase tracking-tighter" style={{ color: getRiskColor(level) }}>
+          {level || 'NORMAL'}
+        </span>
+        <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Status Level</span>
+      </div>
+    </div>
+  );
+};
+
+const RiskTimelineChart = ({ data }) => {
+  const chartData = data.map(r => {
+    const level = r.risk_level || getRiskLabel(r.risk_score || 0.25);
+    return {
+      time: r.timestamp ? (typeof r.timestamp === 'string' ? new Date(r.timestamp).toLocaleTimeString() : new Date(r.timestamp).toLocaleTimeString()) : 'N/A',
+      score: riskScaleMapping[level],
+      level: level,
+      count: r.avg_human_count || 0
+    };
+  });
+
+
+
+  return (
+    <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-6 overflow-hidden">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h3 className="text-xl font-bold text-gray-900 leading-tight tracking-tight">Crowd Risk Timeline</h3>
+          <p className="text-sm text-gray-500 mt-1 font-medium">Real-time risk evolution from Context Engine</p>
+        </div>
+        <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl shadow-inner">
+          <TrendingUp size={24} />
+        </div>
+      </div>
+      <div className="h-80 w-full mt-4">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={chartData} margin={{ top: 20, right: 30, left: 50, bottom: 20 }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+            <XAxis
+              dataKey="time"
+              stroke="#94a3b8"
+              tick={{ fontSize: 10, fontWeight: 600 }}
+              axisLine={false}
+              tickLine={false}
+              dy={10}
+            />
+            <YAxis
+              domain={[0, 3]}
+              ticks={[0, 1, 2, 3]}
+              stroke="#94a3b8"
+              axisLine={false}
+              tickLine={false}
+              tick={<CustomYAxisTick />}
+              dx={-10}
+            />
+            <Tooltip
+              content={({ active, payload }) => {
+                if (active && payload && payload.length) {
+                  const d = payload[0].payload;
+                  return (
+                    <div className="bg-white/95 backdrop-blur-sm p-4 border border-gray-100 shadow-2xl rounded-2xl ring-1 ring-black/5">
+                      <p className="text-[10px] text-gray-400 font-black mb-3 uppercase tracking-widest border-b border-gray-50 pb-2">{d.time}</p>
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className="w-3 h-3 rounded-full shadow-sm" style={{ backgroundColor: getRiskColor(d.level) }}></div>
+                        <p className="font-black text-base italic" style={{ color: getRiskColor(d.level) }}>{d.level}</p>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between gap-6">
+                          <span className="text-xs text-gray-500 font-bold">Avg People:</span>
+                          <span className="font-black text-gray-900">{d.count.toFixed(1)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              }}
+            />
+            <Line
+              type="monotone"
+              dataKey="score"
+              stroke="#cbd5e1"
+              strokeWidth={3}
+              dot={<CustomDot />}
+              activeDot={{ r: 8, strokeWidth: 0, fill: '#64748b' }}
+              isAnimationActive={true}
+              animationDuration={800}
+              connectNulls
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+};
 
 function App() {
   const [file, setFile] = useState(null);
@@ -265,7 +456,7 @@ function App() {
     };
 
     return (
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-all">
+      <div className="bg-white rounded-xl shadow-md border border-gray-100 p-6 hover:shadow-lg transition-all transform hover:-translate-y-1">
         <div className="flex items-center justify-between mb-4">
           <div className={`p-3 rounded-lg ${colorClasses[color]}`}>
             <Icon size={24} />
@@ -712,12 +903,9 @@ function App() {
                       <p className="text-2xl font-bold text-blue-600">{realtimeData.count}</p>
                     </div>
 
-                    <div className="bg-red-50 rounded-lg p-4 border border-red-200">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Shield className="text-red-600" size={20} />
-                        <span className="text-sm font-medium text-gray-700">SD Violations</span>
-                      </div>
-                      <p className="text-2xl font-bold text-red-600">{realtimeData.violations}</p>
+                    <div className="bg-white rounded-lg p-5 border border-gray-100 shadow-sm flex flex-col items-center justify-center">
+                      <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Live Risk Indicator</h4>
+                      <RiskGauge level={remarks.length > 0 ? remarks[remarks.length - 1].risk_level : 'NORMAL'} />
                     </div>
 
                     <div className={`rounded-lg p-4 border ${remarks.length > 0 && ['WARNING', 'CRITICAL'].includes(remarks[remarks.length - 1]?.risk_level) ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
@@ -877,11 +1065,11 @@ function App() {
                 subtitle="Current detection"
               />
               <StatCard
-                title="SD Violations"
-                value={realtimeData.violations}
+                title="Restricted Access"
+                value={realtimeData.restricted ? "ACTIVE" : "NONE"}
                 icon={Shield}
-                color="red"
-                subtitle="Social distancing"
+                color={realtimeData.restricted ? "yellow" : "blue"}
+                subtitle="Zone security status"
               />
               <StatCard
                 title="Current Risk"
@@ -952,63 +1140,28 @@ function App() {
                 </div>
               </div>
 
-              {/* Violations Chart */}
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-lg font-semibold text-gray-900">Violations Over Time</h3>
-                  <Activity size={20} className="text-gray-400" />
+              {/* Risk Meter Gauge Card */}
+              <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-6 flex flex-col items-center justify-center relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-500 via-yellow-400 to-red-500"></div>
+                <div className="w-full flex items-center justify-between mb-8">
+                  <h3 className="text-lg font-bold text-gray-900">Crowd Risk Level</h3>
+                  <Zap size={20} className="text-yellow-500" />
                 </div>
-                <div className="h-64">
-                  {chartData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={chartData}>
-                        <defs>
-                          <linearGradient id="colorViolations" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#ef4444" stopOpacity={0.8} />
-                            <stop offset="95%" stopColor="#ef4444" stopOpacity={0.1} />
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                        <XAxis
-                          dataKey="time"
-                          stroke="#6b7280"
-                          tick={{ fontSize: 12 }}
-                          label={{ value: 'Frame', position: 'insideBottom', offset: -5 }}
-                        />
-                        <YAxis
-                          stroke="#6b7280"
-                          tick={{ fontSize: 12 }}
-                          label={{ value: 'Count', angle: -90, position: 'insideLeft' }}
-                        />
-                        <Tooltip
-                          contentStyle={{
-                            backgroundColor: 'white',
-                            border: '1px solid #e5e7eb',
-                            borderRadius: '8px'
-                          }}
-                        />
-                        <Legend />
-                        <Area
-                          type="monotone"
-                          dataKey="violations"
-                          stroke="#ef4444"
-                          fillOpacity={1}
-                          fill="url(#colorViolations)"
-                          name="SD Violations"
-                        />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <div className="h-full flex items-center justify-center text-gray-400">
-                      <div className="text-center">
-                        <Activity size={32} className="mx-auto mb-2" />
-                        <p className="text-sm">No data yet. Start analysis to see real-time data.</p>
-                      </div>
-                    </div>
-                  )}
+                <div className="w-full py-4">
+                  <RiskGauge level={remarks.length > 0 ? remarks[remarks.length - 1].risk_level : 'NORMAL'} />
                 </div>
+                <p className="text-xs text-gray-500 text-center mt-2 max-w-[200px]">
+                  Visual assessment of the current crowd scenario risk score (0-100%)
+                </p>
               </div>
             </div>
+
+            {/* Risk Timeline Section - Added under analytics graphs */}
+            {remarks.length > 0 && (
+              <div className="mt-8">
+                <RiskTimelineChart data={remarks} />
+              </div>
+            )}
 
             {/* Current Session Info */}
             {currentSession && (
@@ -1086,11 +1239,11 @@ function App() {
                     subtitle="High risk windows"
                   />
                   <StatCard
-                    title="Violations"
-                    value={sessionDetails.session?.summary?.total_violations || 0}
-                    icon={Shield}
+                    title="Risk Score"
+                    value={sessionDetails.session?.summary?.risk_score?.toFixed(2) || "0.25"}
+                    icon={Zap}
                     color="yellow"
-                    subtitle="SD breaches"
+                    subtitle="Context assessment"
                   />
                   <StatCard
                     title="Frame Rate"
@@ -1204,8 +1357,8 @@ function App() {
                                     // Dynamic colors for risk
                                     const colors = {
                                       "Normal": "#10b981",
-                                      "Busy": "#3b82f6",
-                                      "Warning": "#f59e0b",
+                                      "Busy": "#f59e0b",
+                                      "Warning": "#f50b0bff",
                                       "Critical": "#ef4444"
                                     };
                                     return <Cell key={`cell-${index}`} fill={colors[entry.name] || COLORS[index % COLORS.length]} />;
@@ -1225,42 +1378,12 @@ function App() {
                     </div>
 
                     {/* Violations Chart */}
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-6">Violations</h3>
-                      <div className="h-80">
-                        {sessionDetails.trends && sessionDetails.trends.length > 0 ? (
-                          <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={prepareChartData(sessionDetails.trends)}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                              <XAxis
-                                dataKey="frame"
-                                stroke="#6b7280"
-                                tick={{ fontSize: 12 }}
-                                label={{ value: 'Frame', position: 'insideBottom', offset: -5 }}
-                              />
-                              <YAxis
-                                stroke="#6b7280"
-                                tick={{ fontSize: 12 }}
-                                label={{ value: 'Count', angle: -90, position: 'insideLeft' }}
-                              />
-                              <Tooltip
-                                contentStyle={{
-                                  backgroundColor: 'white',
-                                  border: '1px solid #e5e7eb',
-                                  borderRadius: '8px'
-                                }}
-                              />
-                              <Legend />
-                              <Bar dataKey="violations" fill="#ef4444" name="SD Violations" />
-                            </BarChart>
-                          </ResponsiveContainer>
-                        ) : (
-                          <div className="h-full flex items-center justify-center text-gray-400">
-                            <p>No violation data available</p>
-                          </div>
-                        )}
+                    {/* Risk Evolution Timeline (Session View) */}
+                    {sessionDetails.aggregated_windows && sessionDetails.aggregated_windows.length > 0 && (
+                      <div className="mt-8">
+                        <RiskTimelineChart data={sessionDetails.aggregated_windows} />
                       </div>
-                    </div>
+                    )}
 
                     {/* Abnormal Frames Gallery */}
                     {sessionDetails.abnormal_frames && sessionDetails.abnormal_frames.length > 0 && (

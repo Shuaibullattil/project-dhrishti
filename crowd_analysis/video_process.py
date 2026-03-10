@@ -180,8 +180,8 @@ def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writ
 			# ABNORMAL: frame-level flag set to True if proportion of abnormal people exceeds ABNORMAL_THRESH
 			ABNORMAL = False
 			for i, track in enumerate(humans_detected):
-				# Get object bounding box
-				[x, y, w, h] = list(map(int, track.to_tlbr().tolist()))
+				# Get object bounding box (top-left-width-height)
+				[x, y, w, h] = list(map(int, track.to_tlwh().tolist()))
 				# Get object centroid
 				[cx, cy] = list(map(int, track.positions[-1]))
 				# Get object id
@@ -210,8 +210,11 @@ def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writ
 								violate_set.add(j)
 								violate_count[j] += 1
 
-				if SHOW_TRACKING_ID:
-					cv2.putText(frame, str(int(idx)), (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, RGB_COLORS["green"], 2)
+				# FEATURE 1: Draw bounding box and label for every detected person
+				# Draw rectangle on the frame
+				cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+				# Add label above bounding box
+				cv2.putText(frame, f"ID {int(idx)}", (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
 
 		# Place violation count on frames
 		if SD_CHECK:
@@ -267,7 +270,7 @@ def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writ
 		# Calculate metrics for each tracked person
 		for track in humans_detected:
 			# 1. Calculate bounding box area (normalized)
-			[x, y, w, h] = list(map(int, track.to_tlbr().tolist()))
+			[x, y, w, h] = list(map(int, track.to_tlwh().tolist()))
 			bbox_area = w * h
 			normalized_area = bbox_area / frame_area if frame_area > 0 else 0.0
 			bbox_areas.append(normalized_area)

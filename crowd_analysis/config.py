@@ -32,7 +32,7 @@ SD_CHECK = False
 # Show violation count
 SHOW_VIOLATION_COUNT = False
 # Show tracking id
-SHOW_TRACKING_ID = False
+SHOW_TRACKING_ID = True
 # Threshold for distance violation
 SOCIAL_DISTANCE = 50
 # Check for abnormal crowd activity
