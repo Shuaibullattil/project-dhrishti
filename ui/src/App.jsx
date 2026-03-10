@@ -86,39 +86,76 @@ const CustomDot = (props) => {
   );
 };
 
-const RiskGauge = ({ level }) => {
-  const score = riskMapping[level] || 0.25;
-  const data = [{ name: 'Risk', value: score * 100, fill: getRiskColor(level) }];
+const RADIAN = Math.PI / 180;
+const needle = (value, cx, cy, iR, oR, color) => {
+  const ang = 180.0 * (1 - value);
+  const length = (iR + 2 * oR) / 3;
+  const sin = Math.sin(-RADIAN * ang);
+  const cos = Math.cos(-RADIAN * ang);
+  const r = 5;
+  const x0 = cx;
+  const y0 = cy;
+  const xba = x0 + r * sin;
+  const yba = y0 - r * cos;
+  const xbb = x0 - r * sin;
+  const ybb = y0 + r * cos;
+  const xp = x0 + length * cos;
+  const yp = y0 + length * sin;
 
   return (
-    <div className="h-48 w-full relative flex flex-col items-center justify-center">
+    <g>
+      <circle cx={x0} cy={y0} r={r} fill={color} stroke="none" />
+      <path
+        d={`M${xba} ${yba}L${xbb} ${ybb}L${xp} ${yp}L${xba} ${yba}`}
+        stroke="none"
+        fill={color}
+        style={{ transition: 'all 0.5s ease-out' }}
+      />
+    </g>
+  );
+};
+
+const RiskGauge = ({ level, score }) => {
+  const needleValue = score !== undefined ? score : (riskMapping[level] || 0);
+  const gaugeData = [{ value: 100 }]; // Single segment for the gradient arc
+
+  const cx = 150;
+  const cy = 150;
+  const iR = 60;
+  const oR = 100;
+
+  return (
+    <div className="h-48 w-full relative flex flex-col items-center justify-center overflow-hidden">
       <ResponsiveContainer width="100%" height="100%">
-        <RadialBarChart
-          cx="50%"
-          cy="70%"
-          innerRadius="60%"
-          outerRadius="100%"
-          barSize={20}
-          data={data}
-          startAngle={180}
-          endAngle={0}
-        >
-          <RadialBar
-            minAngle={15}
-            background={{ fill: '#f3f4f6' }}
-            clockWise
+        <PieChart>
+          <defs>
+            <linearGradient id="riskGaugeGradient" x1="0" y1="0" x2="100%" y2="0">
+              <stop offset="0%" stopColor="#22c55e" />
+              <stop offset="33%" stopColor="#facc15" />
+              <stop offset="66%" stopColor="#fb923c" />
+              <stop offset="100%" stopColor="#ef4444" />
+            </linearGradient>
+          </defs>
+          <Pie
             dataKey="value"
-            cornerRadius={10}
-            isAnimationActive={true}
-            animationDuration={500}
+            startAngle={180}
+            endAngle={0}
+            data={gaugeData}
+            cx={cx}
+            cy={cy}
+            innerRadius={iR}
+            outerRadius={oR}
+            stroke="none"
+            fill="url(#riskGaugeGradient)"
           />
-        </RadialBarChart>
+          {needle(needleValue, cx, cy, iR, oR, '#334155')}
+        </PieChart>
       </ResponsiveContainer>
-      <div className="absolute bottom-10 flex flex-col items-center">
-        <span className="text-2xl font-black uppercase tracking-tighter" style={{ color: getRiskColor(level) }}>
+      <div className="absolute top-[160px] flex flex-col items-center">
+        <span className="text-xl font-black uppercase tracking-tighter" style={{ color: getRiskColor(level) }}>
           {level || 'NORMAL'}
         </span>
-        <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Status Level</span>
+        <span className="text-[9px] text-gray-400 font-bold uppercase tracking-widest -mt-1">Status</span>
       </div>
     </div>
   );
@@ -905,7 +942,10 @@ function App() {
 
                     <div className="bg-white rounded-lg p-5 border border-gray-100 shadow-sm flex flex-col items-center justify-center">
                       <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Live Risk Indicator</h4>
-                      <RiskGauge level={remarks.length > 0 ? remarks[remarks.length - 1].risk_level : 'NORMAL'} />
+                      <RiskGauge
+                        level={remarks.length > 0 ? remarks[remarks.length - 1].risk_level : 'NORMAL'}
+                        score={remarks.length > 0 ? remarks[remarks.length - 1].risk_score : 0.25}
+                      />
                     </div>
 
                     <div className={`rounded-lg p-4 border ${remarks.length > 0 && ['WARNING', 'CRITICAL'].includes(remarks[remarks.length - 1]?.risk_level) ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
