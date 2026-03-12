@@ -39,6 +39,21 @@ def set_remark_broadcast_callback(callback: Callable):
     _remark_broadcast_callback = callback
 
 
+def escape_markdown(text: str) -> str:
+    """
+    Escape special characters for Telegram MarkdownV2 compatibility.
+    Telegram requires these characters to be escaped with a backslash.
+    """
+    if not text:
+        return ""
+    # Characters that must be escaped in MarkdownV2
+    # Reference: https://core.telegram.org/bots/api#markdownv2-style
+    special_chars = r"_*[]()~`>#+-=|{}.!"
+    for char in special_chars:
+        text = text.replace(char, f"\\{char}")
+    return text
+
+
 def normalize_datetime(dt) -> datetime:
     """Convert various datetime formats to datetime object."""
     if isinstance(dt, datetime):
@@ -317,11 +332,29 @@ def process_session_window(session_id: str) -> bool:
                 heatmap_path = f"alert_heatmap_{session_id}.png"
                 cv2.imwrite(heatmap_path, final_heatmap)
                 print(f"[{session_id}] Generated local mid-session snapshot: {heatmap_path}")
+            else:
+                # Placeholder: if we can't get a background, create a simple styled placeholder
+                # This ensures n8n always gets a file named 'heatmap' to avoid binary missing errors
+                placeholder = np.zeros((480, 640, 3), dtype=np.uint8)
+                # Draw a dark gradient-like background
+                for i in range(480):
+                    placeholder[i, :] = [30 + (i // 10), 20, 20] # Dark blue-ish-red
+                
+                cv2.putText(placeholder, "DHRISHTI ALERT", (150, 200), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 3)
+                cv2.putText(placeholder, "CRITICAL RISK DETECTED", (130, 250), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+                cv2.putText(placeholder, "Heatmap generating...", (180, 300), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
+                
+                heatmap_path = f"alert_heatmap_{session_id}.png"
+                cv2.imwrite(heatmap_path, placeholder)
+                print(f"[{session_id}] Created placeholder snapshot as real heatmap BG was not yet available.")
             
             # 2. Prepare Webhook Payload for Multipart
+            # Escape strings for Telegram MarkdownV2 if they contain special chars
+            session_name = session.get("filename", "Unknown") if session else "Unknown"
+            
             payload = {
-                "session_id": session_id,
-                "session_name": session.get("filename", "Unknown") if session else "Unknown",
+                "session_id": escape_markdown(session_id),
+                "session_name": escape_markdown(session_name),
                 "risk_level": risk_result["risk_level"],
                 "people_count": aggregated["avg_human_count"],
                 "timestamp": str(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
@@ -335,7 +368,7 @@ def process_session_window(session_id: str) -> bool:
                         # Fire and forget with short timeout
                         requests.post("http://localhost:5678/webhook/drishti-alert", data=payload, files=files, timeout=3)
                 else:
-                    # Send metadata only if image failed
+                    # Should practically never happen now with placeholder fallback
                     requests.post("http://localhost:5678/webhook/drishti-alert", data=payload, timeout=3)
             except Exception as e:
                 print(f"[{session_id}] n8n Webhook failed: {e}")

@@ -12,10 +12,6 @@ from util import rect_distance, progress, kinetic_energy
 from colors import RGB_COLORS
 from config import SHOW_DETECT, DATA_RECORD, RE_CHECK, RE_START_TIME, RE_END_TIME, SD_CHECK, SHOW_VIOLATION_COUNT, SHOW_TRACKING_ID, SOCIAL_DISTANCE,\
 	SHOW_PROCESSING_OUTPUT, YOLO_CONFIG, VIDEO_CONFIG, DATA_RECORD_RATE, ABNORMAL_CHECK, ABNORMAL_ENERGY, ABNORMAL_THRESH, ABNORMAL_MIN_PEOPLE, SPEED_THRESHOLD
-from deep_sort import nn_matching
-from deep_sort.detection import Detection
-from deep_sort.tracker import Tracker
-from deep_sort import generate_detections as gdet
 
 # Try to import db and cloudinary_utils
 try:
@@ -81,6 +77,13 @@ def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writ
 	def _calculate_FPS():
 		t1 = time.time() - t0
 		VID_FPS = frame_count / t1
+
+	def _frame_risk_label(restricted_entry, violation_count):
+		if restricted_entry:
+			return "CRITICAL"
+		if violation_count > 0:
+			return "WARNING"
+		return "NORMAL"
 
 	if IS_CAM:
 		VID_FPS = None
@@ -154,6 +157,7 @@ def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writ
 		
 		# Run tracking algorithm
 		[humans_detected, expired] = detect_human(net, ln, frame, encoder, tracker, record_time)
+		violate_set = set()
 
 		# Record movement data
 		for movement in expired:
@@ -169,8 +173,6 @@ def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writ
 			
 		# Initiate video process loop
 		if SHOW_PROCESSING_OUTPUT or SHOW_DETECT or SD_CHECK or RE_CHECK or ABNORMAL_CHECK:
-			# Initialize set for violate so an individual will be recorded only once
-			violate_set = set()
 			# Initialize list to record violation count for each individual detected
 			violate_count = np.zeros(len(humans_detected))
 
@@ -180,7 +182,8 @@ def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writ
 			# ABNORMAL: frame-level flag set to True if proportion of abnormal people exceeds ABNORMAL_THRESH
 			ABNORMAL = False
 			for i, track in enumerate(humans_detected):
-				# Get object bounding box (top-left-width-height)
+				# Get object bounding box in pixel coordinates
+				[x1, y1, x2, y2] = list(map(int, track.to_tlbr().tolist()))
 				[x, y, w, h] = list(map(int, track.to_tlwh().tolist()))
 				# Get object centroid
 				[cx, cy] = list(map(int, track.positions[-1]))
@@ -212,9 +215,9 @@ def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writ
 
 				# FEATURE 1: Draw bounding box and label for every detected person
 				# Draw rectangle on the frame
-				cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+				cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
 				# Add label above bounding box
-				cv2.putText(frame, f"ID {int(idx)}", (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+				cv2.putText(frame, f"ID {int(idx)}", (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
 
 		# Place violation count on frames
 		if SD_CHECK:
@@ -248,11 +251,16 @@ def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writ
 			cv2.putText(frame, text, (10, 30),
 				cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 3)
 
-		# Display current time on screen
-		# current_date = str(current_datetime.strftime("%b-%d-%Y"))
-		# current_time = str(current_datetime.strftime("%I:%M:%S %p"))
-		# cv2.putText(frame, (current_date), (500, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 3)
-		# cv2.putText(frame, (current_time), (500, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 3)
+		risk_label = _frame_risk_label(RE, len(violate_set))
+		cv2.putText(frame, f"Risk: {risk_label}", (10, 70),
+			cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 3)
+
+		current_date = str(current_datetime.strftime("%b-%d-%Y"))
+		current_time = str(current_datetime.strftime("%I:%M:%S %p"))
+		cv2.putText(frame, current_date, (500, 30),
+			cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 3)
+		cv2.putText(frame, current_time, (500, 60),
+			cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 3)
 			
 		# Store cloudinary_url for callback
 		cloudinary_url_for_callback = None

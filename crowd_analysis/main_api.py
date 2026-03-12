@@ -12,10 +12,7 @@ import pandas as pd
 from math import ceil
 from scipy.spatial.distance import euclidean
 from video_process import video_process
-from deep_sort import nn_matching
-from deep_sort.detection import Detection
-from deep_sort.tracker import Tracker
-from deep_sort import generate_detections as gdet
+from tracking import create_tracker, load_detector
 from config import YOLO_CONFIG, VIDEO_CONFIG, DATA_RECORD_RATE, FRAME_SIZE, TRACK_MAX_AGE
 from analysis_utils import calculate_abnormal_stats
 
@@ -35,28 +32,21 @@ def run_processing(video_path, session_id=None, callback=None):
     # Override video path from config
     cap = cv2.VideoCapture(video_path)
     
-    # Load YOLO weights and config using absolute paths
-    WEIGHTS_PATH = os.path.join(script_dir, YOLO_CONFIG["WEIGHTS_PATH"])
-    CONFIG_PATH = os.path.join(script_dir, YOLO_CONFIG["CONFIG_PATH"])
-    
-    net = cv2.dnn.readNetFromDarknet(CONFIG_PATH, WEIGHTS_PATH)
-    net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
-    net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
-    
-    ln = net.getLayerNames()
-    ln = [ln[i - 1] for i in net.getUnconnectedOutLayers()]
-    
-    max_cosine_distance = 0.7
-    nn_budget = None
+    model_path = os.path.join(script_dir, YOLO_CONFIG["YOLO_V8_MODEL"])
+    net = load_detector(model_path)
+    ln = None
+    print(f"Loaded YOLOv8 model for API processing from {model_path}.")
     
     max_age = DATA_RECORD_RATE * TRACK_MAX_AGE
     if max_age > 30:
         max_age = 30
-        
-    model_filename = os.path.join(script_dir, 'model_data/mars-small128.pb')
-    encoder = gdet.create_box_encoder(model_filename, batch_size=1)
-    metric = nn_matching.NearestNeighborDistanceMetric("cosine", max_cosine_distance, nn_budget)
-    tracker = Tracker(metric, max_age=max_age)
+
+    frame_rate = cap.get(cv2.CAP_PROP_FPS)
+    if frame_rate <= 0:
+        frame_rate = 30
+
+    encoder = None
+    tracker = create_tracker(frame_rate=frame_rate, max_age=max_age, n_init=3)
     
     # Stop creating local folders and CSVs. 
     # video_process now returns VID_FPS and collected_movement_data

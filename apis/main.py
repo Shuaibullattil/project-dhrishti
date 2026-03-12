@@ -171,8 +171,15 @@ async def upload_video(
 
 async def process_video_task(file_id: str, file_path: str):
     active_processing[file_id]["status"] = "processing"
+    last_broadcast_frame = -1
     
     def on_progress(data):
+        nonlocal last_broadcast_frame
+        next_frame = int(data.get("frame", -1))
+        if next_frame <= last_broadcast_frame:
+            return
+
+        last_broadcast_frame = next_frame
         active_processing[file_id].update(data)
         sync_broadcast(json.dumps({"file_id": file_id, "type": "realtime", "data": data}, default=json_serial))
 

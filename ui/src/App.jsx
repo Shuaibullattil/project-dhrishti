@@ -277,7 +277,11 @@ function App() {
   const [automationAlert, setAutomationAlert] = useState(null);
 
   const ws = useRef(null);
+  const lastRenderedFrameRef = useRef(0);
   const [historicalTab, setHistoricalTab] = useState('video');
+  const realtimeFrameSrc = realtimeData.frameImage
+    ? `data:image/jpeg;base64,${realtimeData.frameImage}`
+    : null;
 
   useEffect(() => {
     fetchSessions();
@@ -310,17 +314,23 @@ function App() {
               setProcessingStatus('idle');
               alert(`Processing failed: ${msg.error || 'Unknown error'}`);
             } else if (msg.type === 'realtime') {
+              const nextFrame = msg.data.frame || 0;
+              if (nextFrame <= lastRenderedFrameRef.current) {
+                return;
+              }
+
+              lastRenderedFrameRef.current = nextFrame;
               setRealtimeData({
                 count: msg.data.human_count || 0,
                 violations: msg.data.violate_count || 0,
                 restricted: msg.data.restricted_entry || false,
-                frame: msg.data.frame || 0,
+                frame: nextFrame,
                 frameImage: msg.data.frame_image || null
               });
 
               setChartData(prev => {
                 const newData = [...prev.slice(-99), {
-                  time: msg.data.frame || 0,
+                  time: nextFrame,
                   count: msg.data.human_count || 0,
                   violations: msg.data.violate_count || 0
                 }];
@@ -394,6 +404,7 @@ function App() {
 
     setProcessingStatus('uploading');
     setChartData([]);
+    lastRenderedFrameRef.current = 0;
     setRealtimeData({ count: 0, violations: 0, restricted: false, frame: 0, frameImage: null });
     setAbnormalFrames([]); // Reset abnormal frames
     setRemarks([]); // Reset remarks
@@ -870,10 +881,13 @@ function App() {
                     <div className="relative bg-black rounded-lg overflow-hidden flex items-center justify-center" style={{ aspectRatio: '16/9' }}>
                       {realtimeData.frameImage ? (
                         <img
-                          src={`data:image/jpeg;base64,${realtimeData.frameImage}`}
+                          key={realtimeData.frame}
+                          src={realtimeFrameSrc}
                           alt="Processing frame"
                           className="w-full h-full object-contain relative z-10"
                           id="live-video-img"
+                          loading="eager"
+                          decoding="sync"
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-gray-400">

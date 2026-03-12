@@ -16,51 +16,37 @@ import os
 import csv
 import json
 from video_process import video_process
-from deep_sort import nn_matching
-from deep_sort.detection import Detection
-from deep_sort.tracker import Tracker
-from deep_sort import generate_detections as gdet
+from tracking import create_tracker, load_detector
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Read from video
 IS_CAM = VIDEO_CONFIG["IS_CAM"]
 cap = cv2.VideoCapture(VIDEO_CONFIG["VIDEO_CAP"])
 
-# Load YOLOv3-tiny weights and config
-WEIGHTS_PATH = YOLO_CONFIG["WEIGHTS_PATH"]
-CONFIG_PATH = YOLO_CONFIG["CONFIG_PATH"]
+# Load YOLOv8 model
+model_path = os.path.join(SCRIPT_DIR, YOLO_CONFIG["YOLO_V8_MODEL"])
+net = load_detector(model_path)
+ln = None
+print(f"Loaded YOLOv8 model from {model_path}.")
 
-# Load the YOLOv3-tiny pre-trained COCO dataset 
-net = cv2.dnn.readNetFromDarknet(CONFIG_PATH, WEIGHTS_PATH)
-# Set the preferable backend to CPU since we are not using GPU
-net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
-net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
-
-# Get the names of all the layers in the network
-ln = net.getLayerNames()
-# Filter out the layer names we dont need for YOLO
-ln = [ln[i - 1] for i in net.getUnconnectedOutLayers()]
-
-# Tracker parameters
-max_cosine_distance = 0.7
-nn_budget = None
-
-#initialize deep sort object
 if IS_CAM: 
 	max_age = VIDEO_CONFIG["CAM_APPROX_FPS"] * TRACK_MAX_AGE
+	frame_rate = VIDEO_CONFIG["CAM_APPROX_FPS"]
 else:
 	max_age=DATA_RECORD_RATE * TRACK_MAX_AGE
 	if max_age > 30:
 		max_age = 30
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+	frame_rate = cap.get(cv2.CAP_PROP_FPS)
+	if frame_rate <= 0:
+		frame_rate = 30
 PROCESSED_DATA_DIR = os.path.join(SCRIPT_DIR, 'processed_data')
 
 if not os.path.exists(PROCESSED_DATA_DIR):
 	os.makedirs(PROCESSED_DATA_DIR)
 
-model_filename = os.path.join(SCRIPT_DIR, 'model_data/mars-small128.pb')
-encoder = gdet.create_box_encoder(model_filename, batch_size=1)
-metric = nn_matching.NearestNeighborDistanceMetric("cosine", max_cosine_distance, nn_budget)
-tracker = Tracker(metric, max_age=max_age)
+encoder = None
+tracker = create_tracker(frame_rate=frame_rate, max_age=max_age, n_init=3)
 
 movement_data_file = open(os.path.join(PROCESSED_DATA_DIR, 'movement_data.csv'), 'w', newline='') 
 crowd_data_file = open(os.path.join(PROCESSED_DATA_DIR, 'crowd_data.csv'), 'w', newline='')
