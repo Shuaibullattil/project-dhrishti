@@ -273,7 +273,8 @@ function App() {
     capacity: '',
     sensitivity: '',
     clustering: '',
-    goal: ''
+    goal: '',
+    yolo_model: '../nano.pt'
   });
   const [automationAlert, setAutomationAlert] = useState(null);
 
@@ -398,7 +399,7 @@ function App() {
 
   const handleUpload = async () => {
     if (!file) return;
-    if (!sessionContext.flow_type || !sessionContext.capacity || !sessionContext.sensitivity || !sessionContext.clustering || !sessionContext.goal) {
+    if (!sessionContext.flow_type || !sessionContext.capacity || !sessionContext.sensitivity || !sessionContext.clustering || !sessionContext.goal || !sessionContext.yolo_model) {
       alert("Please fill in all Scene Context Configuration fields.");
       return;
     }
@@ -418,6 +419,7 @@ function App() {
     formData.append('sensitivity', sessionContext.sensitivity);
     formData.append('clustering', sessionContext.clustering);
     formData.append('goal', sessionContext.goal);
+    formData.append('yolo_model', sessionContext.yolo_model);
 
     try {
       const res = await axios.post(`${API_BASE}/upload`, formData, {
@@ -889,6 +891,17 @@ function App() {
                             <option value="SECURITY">Security</option>
                             <option value="RESTRICTED">Restricted</option>
                             <option value="MONITORING">Monitoring</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 mb-1">YOLO Model</label>
+                          <select
+                            value={sessionContext.yolo_model}
+                            onChange={(e) => setSessionContext({ ...sessionContext, yolo_model: e.target.value })}
+                            className="w-full rounded border-gray-300 shadow-sm p-1.5 focus:ring-blue-500 focus:border-blue-500"
+                          >
+                            <option value="../nano.pt">nano.pt (Fast)</option>
+                            <option value="../yolov8n.pt">yolov8n.pt (Accurate)</option>
                           </select>
                         </div>
                       </div>

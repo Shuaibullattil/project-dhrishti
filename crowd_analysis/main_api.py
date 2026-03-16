@@ -25,14 +25,18 @@ try:
 except ImportError:
     db = None
 
-def run_processing(video_path, session_id=None, callback=None):
+def run_processing(video_path, session_id=None, callback=None, yolo_model=sys.modules.get('config').YOLO_CONFIG["YOLO_V8_MODEL"] if sys.modules.get('config') else "../nano.pt"):
     # Get the directory of this script to resolve paths
     script_dir = os.path.dirname(os.path.abspath(__file__))
     
     # Override video path from config
     cap = cv2.VideoCapture(video_path)
     
-    model_path = os.path.join(script_dir, YOLO_CONFIG["YOLO_V8_MODEL"])
+    if yolo_model:
+        model_path = os.path.join(script_dir, yolo_model)
+    else:
+        model_path = os.path.join(script_dir, YOLO_CONFIG["YOLO_V8_MODEL"])
+        
     net = load_detector(model_path)
     ln = None
     print(f"Loaded YOLOv8 model for API processing from {model_path}.")

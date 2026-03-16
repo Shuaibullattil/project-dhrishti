@@ -143,7 +143,8 @@ async def upload_video(
     capacity: int = Form(...),
     sensitivity: str = Form(...),
     clustering: str = Form(...),
-    goal: str = Form(...)
+    goal: str = Form(...),
+    yolo_model: str = Form("../nano.pt")
 ):
     file_id = str(uuid.uuid4())
     file_path = os.path.abspath(os.path.join(UPLOAD_DIR, f"{file_id}_{file.filename}"))
@@ -160,16 +161,17 @@ async def upload_video(
         "capacity": capacity,
         "sensitivity": sensitivity,
         "clustering": clustering,
-        "goal": goal
+        "goal": goal,
+        "yolo_model": yolo_model
     }
     db.create_session(file_id, file.filename, context=context)
     
     # Start background processing
-    background_tasks.add_task(process_video_task, file_id, file_path)
+    background_tasks.add_task(process_video_task, file_id, file_path, yolo_model)
     
     return {"file_id": file_id, "filename": file.filename}
 
-async def process_video_task(file_id: str, file_path: str):
+async def process_video_task(file_id: str, file_path: str, yolo_model: str = "../nano.pt"):
     active_processing[file_id]["status"] = "processing"
     last_broadcast_frame = -1
     
@@ -185,7 +187,7 @@ async def process_video_task(file_id: str, file_path: str):
 
     try:
         # Run in executor to avoid blocking
-        await loop.run_in_executor(executor, run_processing, file_path, file_id, on_progress)
+        await loop.run_in_executor(executor, run_processing, file_path, file_id, on_progress, yolo_model)
         
         # Get final analysis results from MongoDB
         analysis = get_analysis_results(file_id)
