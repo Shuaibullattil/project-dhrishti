@@ -279,6 +279,17 @@ async def delete_session(session_id: str):
     else:
         return {"error": "Failed to delete session"}
 
+class DeleteSessionsRequest(BaseModel):
+    session_ids: List[str]
+
+@app.post("/sessions/batch-delete")
+async def delete_multiple_sessions(request: DeleteSessionsRequest):
+    success = db.delete_sessions(request.session_ids)
+    if success:
+        return {"message": f"Successfully deleted {len(request.session_ids)} sessions"}
+    else:
+        return {"error": "Failed to delete sessions"}
+
 @app.get("/sessions/{session_id}/heatmap")
 async def get_session_heatmap(session_id: str):
     session = db.get_session(session_id)

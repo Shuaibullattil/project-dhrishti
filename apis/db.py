@@ -215,4 +215,17 @@ class MongoDB:
             print(f"Error deleting session {session_id}: {e}")
             return False
 
+    def delete_sessions(self, session_ids: list):
+        """Deletes all data associated with multiple session_ids across all collections."""
+        try:
+            self.sessions.delete_many({"session_id": {"$in": session_ids}})
+            self.yolov.delete_many({"session_id": {"$in": session_ids}})
+            self.abnormal_stats.delete_many({"session_id": {"$in": session_ids}})
+            self.aggregate_frame_data.delete_many({"session_id": {"$in": session_ids}})
+            self.last_aggregate_frame.delete_many({"session_id": {"$in": session_ids}})
+            return True
+        except Exception as e:
+            print(f"Error deleting multiple sessions: {e}")
+            return False
+
 db = MongoDB()

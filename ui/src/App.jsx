@@ -262,6 +262,7 @@ function App() {
   const [chartData, setChartData] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [selectedSession, setSelectedSession] = useState(null);
+  const [selectedSessions, setSelectedSessions] = useState(new Set());
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [sessionDetails, setSessionDetails] = useState(null);
   const [abnormalFrames, setAbnormalFrames] = useState([]); // For real-time abnormal frames
@@ -469,6 +470,13 @@ function App() {
 
     try {
       await axios.delete(`${API_BASE}/sessions/${sessionId}`);
+      
+      setSelectedSessions(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(sessionId);
+        return newSet;
+      });
+
       // Refresh sessions list
       fetchSessions();
       // If the deleted session was selected, clear details
@@ -479,6 +487,42 @@ function App() {
     } catch (err) {
       console.error("Delete session failed", err);
       alert("Failed to delete session");
+    }
+  };
+
+  const handleToggleSessionSelection = (e, sessionId) => {
+    e.stopPropagation();
+    setSelectedSessions(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(sessionId)) {
+        newSet.delete(sessionId);
+      } else {
+        newSet.add(sessionId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleDeleteMultipleSessions = async () => {
+    if (selectedSessions.size === 0) return;
+    if (!window.confirm(`Are you sure you want to delete ${selectedSessions.size} selected session(s)?`)) return;
+
+    try {
+      await axios.post(`${API_BASE}/sessions/batch-delete`, {
+        session_ids: Array.from(selectedSessions)
+      });
+      // Clear selection
+      setSelectedSessions(new Set());
+      // Refresh sessions list
+      fetchSessions();
+      // If the currently viewed session details is one of the deleted, clear it
+      if (selectedSessions.has(selectedSession)) {
+        setSelectedSession(null);
+        setSessionDetails(null);
+      }
+    } catch (err) {
+      console.error("Delete multiple sessions failed", err);
+      alert("Failed to delete selected sessions");
     }
   };
 
@@ -589,13 +633,24 @@ function App() {
           <div className="p-4">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Previous Sessions</h2>
-              <button
-                onClick={fetchSessions}
-                className="text-xs text-blue-600 hover:text-blue-700 font-medium"
-                disabled={loadingSessions}
-              >
-                {loadingSessions ? <Loader2 size={14} className="animate-spin" /> : 'Refresh'}
-              </button>
+              <div className="flex items-center gap-3">
+                {selectedSessions.size > 0 && (
+                  <button
+                    onClick={handleDeleteMultipleSessions}
+                    className="text-xs text-red-600 hover:text-red-700 font-medium flex items-center gap-1"
+                    title="Delete Selected"
+                  >
+                    <Trash2 size={14} /> ({selectedSessions.size})
+                  </button>
+                )}
+                <button
+                  onClick={fetchSessions}
+                  className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                  disabled={loadingSessions}
+                >
+                  {loadingSessions ? <Loader2 size={14} className="animate-spin" /> : 'Refresh'}
+                </button>
+              </div>
             </div>
 
             {loadingSessions && sessions.length === 0 ? (
@@ -619,14 +674,23 @@ function App() {
                       }`}
                   >
                     <div className="flex items-start justify-between mb-2">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-gray-900 truncate mb-1">
-                          {session.filename || 'Untitled'}
-                        </p>
-                        <p className="text-xs text-gray-500 flex items-center gap-1">
-                          <Clock size={12} />
-                          {formatDate(session.start_time)}
-                        </p>
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <input
+                          type="checkbox"
+                          checked={selectedSessions.has(session.session_id)}
+                          onChange={(e) => handleToggleSessionSelection(e, session.session_id)}
+                          onClick={(e) => e.stopPropagation()}
+                          className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 mt-1 cursor-pointer"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-gray-900 truncate mb-1">
+                            {session.filename || 'Untitled'}
+                          </p>
+                          <p className="text-xs text-gray-500 flex items-center gap-1">
+                            <Clock size={12} />
+                            {formatDate(session.start_time)}
+                          </p>
+                        </div>
                       </div>
                       <div className="flex items-center gap-2 ml-2">
                         {session.status === 'completed' ? (

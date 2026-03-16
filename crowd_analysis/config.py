@@ -13,7 +13,7 @@ VIDEO_CONFIG = {
 YOLO_CONFIG = {
 	"WEIGHTS_PATH" : "YOLOv4-tiny/yolov4-tiny.weights",
 	"CONFIG_PATH" : "YOLOv4-tiny/yolov4-tiny.cfg",
-	"YOLO_V8_MODEL": "../yolov8n.pt",
+	"YOLO_V8_MODEL": "../nano.pt",
 	"USE_YOLO_V8": True
 }
 # Show individuals detected
