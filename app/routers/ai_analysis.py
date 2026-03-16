@@ -7,9 +7,8 @@ from app.services.ai_service import (
     generate_summary,
     answer_question,
     explain_latest_alert,
+    groq_client,
 )
-from app.services.gemini_client import GeminiClient
-
 
 router = APIRouter(prefix="/ai", tags=["ai-analysis"])
 
@@ -28,10 +27,7 @@ async def get_ai_summary(session_id: str):
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
     if analysis is None:
-        raise HTTPException(
-            status_code=404,
-            detail="No aggregated window data found for this session.",
-        )
+        return {"analysis": "Status: Pending\nReason: Waiting for enough frames to aggregate crowd data.\nRecommended Action: Please wait for the system to process the video."}
     return {"analysis": analysis}
 
 
@@ -48,10 +44,7 @@ async def ask_ai(session_id: str, body: QuestionRequest):
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
     if analysis is None:
-        raise HTTPException(
-            status_code=404,
-            detail="No aggregated window data found for this session.",
-        )
+        return {"analysis": "Waiting for crowd data. Not enough context available yet to answer questions for this session."}
     return {"analysis": analysis}
 
 
@@ -65,28 +58,25 @@ async def explain_ai(session_id: str):
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
     if analysis is None:
-        raise HTTPException(
-            status_code=404,
-            detail="No abnormal aggregated window found for this session.",
-        )
+        return {"analysis": "No abnormal activity detected yet. The crowd is behaving normally."}
     return {"analysis": analysis}
 
 
 @router.get("/health")
 async def ai_health():
     """
-    AI health check for the Gemini-based interpretation layer.
-    Sends a simple "hello" prompt to verify the API and detects quota limits.
-    Always returns valid JSON; never raises.
+    AI health check for the Groq-based interpretation layer.
+    Checks if the client initialized successfully.
     """
     try:
-        client = GeminiClient()
-        ok, quota_limited = await client.health_check()
-        status = "ready" if (ok and not quota_limited) else "quota_limited"
+        if groq_client is not None:
+            status = "ready"
+        else:
+            status = "error"
     except Exception:
-        status = "quota_limited"
+        status = "error"
     return {
-        "ai_provider": "gemini",
+        "ai_provider": "groq",
         "status": status,
     }
 

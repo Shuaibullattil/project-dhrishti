@@ -11,6 +11,17 @@ type AlertExplanationDrawerProps = {
   onClose: () => void;
 };
 
+const renderWithBold = (text: string) => {
+  if (!text) return null;
+  const parts = text.split(/(\*\*.*?\*\*)/g);
+  return parts.map((part, index) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return <strong key={index}>{part.slice(2, -2)}</strong>;
+    }
+    return part;
+  });
+};
+
 const AlertExplanationDrawer: React.FC<AlertExplanationDrawerProps> = ({
   sessionId,
   open,
@@ -96,7 +107,7 @@ const AlertExplanationDrawer: React.FC<AlertExplanationDrawerProps> = ({
 
           {sessionId && !loading && analysis && (
             <p className="whitespace-pre-line text-sm text-gray-900">
-              {analysis}
+              {renderWithBold(analysis)}
             </p>
           )}
 

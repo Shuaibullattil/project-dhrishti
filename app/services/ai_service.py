@@ -1,12 +1,14 @@
 from datetime import datetime
 from typing import List, Dict, Optional
+import os
+from groq import Groq
 
 from apis.db import db
-from app.services.gemini_client import GeminiClient
 
-
-_gemini_client = GeminiClient()
-
+try:
+    groq_client = Groq(api_key=os.getenv("GROQ_API_KEY", "default"))
+except Exception:
+    groq_client = None
 
 def _format_time(value: Optional[datetime]) -> str:
     if isinstance(value, datetime):
@@ -135,9 +137,32 @@ def _build_abnormal_context(session_id: str) -> Optional[str]:
     return f"{rules_description}\nRecent timeline around alert:\n{timeline}\n\n{details}"
 
 
+async def generate_llm_response(prompt: str, system_prompt: str = "", json_mode: bool = False) -> str:
+    if os.getenv("LLM_PROVIDER") == "groq" and groq_client:
+        print("AI provider: GROQ")
+        try:
+            kwargs = {
+                "model": "llama-3.3-70b-versatile",
+                "messages": [
+                    {"role": "system", "content": system_prompt or "You are an AI crowd monitoring assistant."},
+                    {"role": "user", "content": prompt}
+                ]
+            }
+            if json_mode:
+                kwargs["response_format"] = {"type": "json_object"}
+            
+            response = groq_client.chat.completions.create(**kwargs)
+            return response.choices[0].message.content
+        except Exception as e:
+            print(f"Groq failed: {e}")
+            raise RuntimeError(f"Groq API Error: {e}")
+            
+    raise RuntimeError("Groq client not initialized or LLM_PROVIDER is not 'groq'")
+
+
 async def analyze_context(context: str, mode: str, question: Optional[str] = None) -> str:
     """
-    Analyze provided context using Gemini. Modes: summary, qa, explain.
+    Analyze provided context using LLMs. Modes: summary, qa, explain.
     User prompt is built as: CROWD DATA: {context}  QUESTION: {question if exists}
     """
     mode = mode.lower()
@@ -145,13 +170,13 @@ async def analyze_context(context: str, mode: str, question: Optional[str] = Non
     if mode == "summary":
         system_prompt = (
             "You are an intelligent crowd safety monitoring system. "
-            "Provide operational insight for security staff.\n\n"
-            "Return EXACT format:\n"
-            "Status:\n"
-            "Reason:\n"
-            "Recommended Action:\n"
+            "You must respond with ONLY a valid JSON object. "
+            "The JSON object must contain exactly three string keys: 'status', 'reason', and 'action'."
         )
-        user_prompt = f"CROWD DATA:\n{context}\n\nQUESTION:\nProvide a concise operational situation summary."
+        user_prompt = (
+            f"CROWD DATA:\n{context}\n\n"
+            "QUESTION:\nProvide a concise operational situation summary in JSON format."
+        )
     elif mode == "qa":
         system_prompt = (
             "Answer strictly using provided crowd data. "
@@ -167,7 +192,20 @@ async def analyze_context(context: str, mode: str, question: Optional[str] = Non
     else:
         raise ValueError(f"Unsupported analysis mode: {mode}")
 
-    return await _gemini_client.generate(system_prompt=system_prompt, user_prompt=user_prompt)
+    if mode == "summary":
+        response_text = await generate_llm_response(prompt=user_prompt, system_prompt=system_prompt, json_mode=True)
+        try:
+            import json
+            data = json.loads(response_text)
+            status = data.get("status", "Not specified")
+            reason = data.get("reason", "No specific reason provided.")
+            action = data.get("action", "No action required at this time.")
+            return f"Status: {status}\nReason: {reason}\nRecommended Action: {action}"
+        except Exception as e:
+            print(f"Failed to parse Groq summary JSON: {e}")
+            return response_text
+            
+    return await generate_llm_response(prompt=user_prompt, system_prompt=system_prompt)
 
 
 def _fetch_recent_windows(session_id: str, limit: int = 12) -> List[Dict]:
@@ -185,6 +223,24 @@ def _fetch_recent_windows(session_id: str, limit: int = 12) -> List[Dict]:
     return list(cursor)
 
 
+def _fetch_session_context(session_id: str) -> str:
+    """
+    Fetch the manual scene context defined by the user during video upload.
+    """
+    session = db.get_session(session_id)
+    if not session or "context" not in session:
+        return ""
+        
+    ctx = session["context"]
+    context_str = "USER DEFINED SCENE CONTEXT:\n"
+    if ctx.get("flow_type"): context_str += f"- Flow Type: {ctx.get('flow_type')}\n"
+    if ctx.get("capacity"): context_str += f"- Expected Capacity: {ctx.get('capacity')}\n"
+    if ctx.get("sensitivity"): context_str += f"- Sensitivity: {ctx.get('sensitivity')}\n"
+    if ctx.get("goal"): context_str += f"- Goal: {ctx.get('goal')}\n"
+    
+    return context_str + "\n"
+
+
 async def generate_summary(session_id: str, window_count: int = 12) -> Optional[str]:
     """
     Generate an AI-driven situation summary for the last N windows.
@@ -194,7 +250,8 @@ async def generate_summary(session_id: str, window_count: int = 12) -> Optional[
         return None
 
     timeline = _build_timeline(windows)
-    return await analyze_context(timeline, mode="summary")
+    scene_ctx = _fetch_session_context(session_id)
+    return await analyze_context(scene_ctx + timeline, mode="summary")
 
 
 async def answer_question(session_id: str, question: str, window_count: int = 12) -> Optional[str]:
@@ -206,7 +263,8 @@ async def answer_question(session_id: str, question: str, window_count: int = 12
         return None
 
     timeline = _build_timeline(windows)
-    return await analyze_context(timeline, mode="qa", question=question)
+    scene_ctx = _fetch_session_context(session_id)
+    return await analyze_context(scene_ctx + timeline, mode="qa", question=question)
 
 
 async def explain_latest_alert(session_id: str) -> Optional[str]:
@@ -217,5 +275,5 @@ async def explain_latest_alert(session_id: str) -> Optional[str]:
     if not context:
         return None
 
-    return await analyze_context(context, mode="explain")
+    return await analyze_context(_fetch_session_context(session_id) + context, mode="explain")
 

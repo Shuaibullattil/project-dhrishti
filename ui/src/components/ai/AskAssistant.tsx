@@ -10,6 +10,17 @@ type AskAssistantProps = {
   mode?: "dashboard" | "session";
 };
 
+const renderWithBold = (text: string) => {
+  if (!text) return null;
+  const parts = text.split(/(\*\*.*?\*\*)/g);
+  return parts.map((part, index) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return <strong key={index}>{part.slice(2, -2)}</strong>;
+    }
+    return part;
+  });
+};
+
 const AskAssistant: React.FC<AskAssistantProps> = ({
   sessionId,
   mode = "dashboard",
@@ -106,7 +117,7 @@ const AskAssistant: React.FC<AskAssistantProps> = ({
       {answer && (
         <div className="mt-1 flex-1 overflow-y-auto border border-gray-100 rounded-lg bg-gray-50 p-3">
           <p className="text-sm text-gray-900 whitespace-pre-line">
-            {answer}
+            {renderWithBold(answer)}
           </p>
         </div>
       )}
