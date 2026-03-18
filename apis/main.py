@@ -177,6 +177,11 @@ async def process_video_task(file_id: str, file_path: str, yolo_model: str = "..
     
     def on_progress(data):
         nonlocal last_broadcast_frame
+        
+        # Check for cancel signal
+        if active_processing.get(file_id, {}).get("status") == "cancelling":
+            return {"cancel": True}
+            
         next_frame = int(data.get("frame", -1))
         if next_frame <= last_broadcast_frame:
             return
@@ -280,6 +285,13 @@ async def delete_session(session_id: str):
         return {"message": f"Session {session_id} deleted successfully"}
     else:
         return {"error": "Failed to delete session"}
+
+@app.post("/sessions/{session_id}/cancel")
+async def cancel_session(session_id: str):
+    if session_id in active_processing:
+        active_processing[session_id]["status"] = "cancelling"
+        return {"message": "Cancellation requested"}
+    return {"error": "Session not in active processing"}
 
 class DeleteSessionsRequest(BaseModel):
     session_ids: List[str]

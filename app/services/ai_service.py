@@ -186,9 +186,20 @@ async def analyze_context(context: str, mode: str, question: Optional[str] = Non
         user_prompt = f"CROWD DATA:\n{context}\n\nQUESTION:\n{q}"
     elif mode == "explain":
         system_prompt = (
-            "Explain why the alert was triggered based on safety indicators."
+            "You are a security assistant. Explain why the alert was triggered simply and concisely. "
+            "Follow these strict rules:\n"
+            "1. NO numbers, numeric thresholds, ratios, or technical variable names.\n"
+            "2. Keep it under 80-100 words, readable in <5 seconds.\n"
+            "3. Use simple language (e.g., instead of 'avg_motion_speed high' use 'people moving very fast', instead of 'abnormal_activity' use 'unusual crowd behavior').\n"
+            "4. Structure your output EXACTLY as:\n\n"
+            "🚨 [1-line High/Medium Risk Alert Summary]\n\n"
+            "Why:\n"
+            "• [Simple point 1]\n"
+            "• [Simple point 2]\n\n"
+            "Action:\n"
+            "• [Clear actionable instruction]"
         )
-        user_prompt = f"CROWD DATA:\n{context}\n\nQUESTION:\nExplain clearly for security operators."
+        user_prompt = f"CROWD DATA:\n{context}\n\nQUESTION:\nExplain clearly for security operators following the exact structure and rules provided."
     else:
         raise ValueError(f"Unsupported analysis mode: {mode}")
 

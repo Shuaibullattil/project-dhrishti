@@ -375,7 +375,13 @@ def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writ
 			else:
 				callback_data["heatmap_points"] = []
 			
-			callback(callback_data)
+			res = callback(callback_data)
+			if res and isinstance(res, dict) and res.get("cancel"):
+				print("Processing cancelled by user")
+				_end_video(tracker, frame_count, movement_data_writer)
+				if not VID_FPS:
+					_calculate_FPS()
+				break
 
 		# Press 'Q' to stop the video display
 		if cv2.waitKey(1) & 0xFF == ord('q'):

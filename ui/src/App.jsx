@@ -439,6 +439,16 @@ function App() {
     }
   };
 
+  const handleCancelSession = async () => {
+    if (!fileId) return;
+    try {
+      await axios.post(`${API_BASE}/sessions/${fileId}/cancel`);
+      setProcessingStatus('cancelling...');
+    } catch (err) {
+      console.error("Failed to cancel session", err);
+    }
+  };
+
   const loadSessionDetails = async (sessionId) => {
     try {
       const res = await axios.get(`${API_BASE}/sessions/${sessionId}`);
@@ -940,13 +950,23 @@ function App() {
             )}
 
             {/* Real-time Frame Display - Shown when processing */}
-            {processingStatus === 'processing' && (
+            {(processingStatus === 'processing' || processingStatus === 'cancelling...') && (
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-semibold text-gray-900">Processing Frame</h3>
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <Video size={18} />
-                    <span>Frame: {realtimeData.frame}</span>
+                  <div className="flex items-center gap-4 text-sm text-gray-600">
+                    <button 
+                      onClick={handleCancelSession}
+                      disabled={processingStatus === 'cancelling...'}
+                      className="px-3 py-1.5 bg-red-100 text-red-700 hover:bg-red-200 rounded-lg text-sm font-semibold flex items-center gap-1 transition-colors disabled:opacity-50"
+                    >
+                      <XCircle size={16} />
+                      {processingStatus === 'cancelling...' ? 'Cancelling...' : 'Cancel Processing'}
+                    </button>
+                    <div className="flex items-center gap-2">
+                      <Video size={18} />
+                      <span>Frame: {realtimeData.frame}</span>
+                    </div>
                   </div>
                 </div>
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
