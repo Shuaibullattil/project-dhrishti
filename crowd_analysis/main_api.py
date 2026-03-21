@@ -29,6 +29,9 @@ def run_processing(video_path, session_id=None, callback=None, yolo_model=sys.mo
     # Get the directory of this script to resolve paths
     script_dir = os.path.dirname(os.path.abspath(__file__))
     
+    # Determine if this is a webcam stream
+    is_cam = video_path == 0 or str(video_path) == "0"
+    
     # Override video path from config
     cap = cv2.VideoCapture(video_path)
     
@@ -54,14 +57,14 @@ def run_processing(video_path, session_id=None, callback=None, yolo_model=sys.mo
     
     # Stop creating local folders and CSVs. 
     # video_process now returns VID_FPS and collected_movement_data
-    vid_fps, movement_data, heatmap_url = video_process(cap, FRAME_SIZE, net, ln, encoder, tracker, None, None, callback, session_id)
+    vid_fps, movement_data, heatmap_url = video_process(cap, FRAME_SIZE, net, ln, encoder, tracker, None, None, callback, session_id, is_cam=is_cam)
     
     total_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
     
     video_data = {
         "VIDEO_CAP": video_path,
-        "IS_CAM": False,
-        "DATA_RECORD_FRAME" : int(vid_fps / DATA_RECORD_RATE),
+        "IS_CAM": is_cam,
+        "DATA_RECORD_FRAME" : 2 if is_cam else int(vid_fps / DATA_RECORD_RATE),
         "VID_FPS" : vid_fps,
         "PROCESSED_FRAME_SIZE": FRAME_SIZE,
         "TRACK_MAX_AGE": TRACK_MAX_AGE,

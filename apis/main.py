@@ -82,9 +82,6 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 # Shared state for real-time updates
 active_processing: Dict[str, Dict] = {}
 
-# Shared state for real-time updates
-active_processing: Dict[str, Dict] = {}
-
 class ConnectionManager:
     def __init__(self):
         self.active_connections: List[WebSocket] = []
@@ -171,6 +168,43 @@ async def upload_video(
     
     return {"file_id": file_id, "filename": file.filename}
 
+@app.post("/start-webcam")
+async def start_webcam(
+    background_tasks: BackgroundTasks, 
+    flow_type: str = Form(...),
+    capacity: int = Form(...),
+    sensitivity: str = Form(...),
+    clustering: str = Form(...),
+    goal: str = Form(...),
+    yolo_model: str = Form("../nano.pt")
+):
+    file_id = str(uuid.uuid4())
+    
+    active_processing[file_id] = {"status": "queued", "progress": 0, "count": 0}
+    
+    # Initialize session in MongoDB
+    context = {
+        "flow_type": flow_type,
+        "capacity": capacity,
+        "sensitivity": sensitivity,
+        "clustering": clustering,
+        "goal": goal,
+        "yolo_model": yolo_model
+    }
+    db.create_session(file_id, "Live Webcam Stream", context=context, session_type="webcam")
+    
+    # Start background processing
+    background_tasks.add_task(process_video_task, file_id, 0, yolo_model)
+    
+    return {"file_id": file_id, "filename": "Live Webcam Stream"}
+
+@app.post("/stop-webcam/{session_id}")
+async def stop_webcam(session_id: str):
+    if session_id in active_processing:
+        active_processing[session_id]["status"] = "cancelling"
+        return {"message": "Stopping webcam stream"}
+    return {"error": "Session not in active processing"}
+
 async def process_video_task(file_id: str, file_path: str, yolo_model: str = "../nano.pt"):
     active_processing[file_id]["status"] = "processing"
     last_broadcast_frame = -1
@@ -216,9 +250,12 @@ async def process_video_task(file_id: str, file_path: str, yolo_model: str = "..
             "analysis": analysis
         }, default=json_serial))
         
-        # Cleanup uploaded video file
-        if os.path.exists(file_path):
-            os.remove(file_path)
+        # Cleanup uploaded video file - skip for webcam (file_path is 0)
+        if isinstance(file_path, str) and os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except Exception as e:
+                print(f"Warning: Failed to cleanup video file {file_path}: {e}")
             
     except Exception as e:
         import traceback

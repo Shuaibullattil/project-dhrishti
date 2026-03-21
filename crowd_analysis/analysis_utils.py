@@ -8,7 +8,7 @@ def calculate_abnormal_stats(movement_data, vid_fps, data_record_frame, frame_si
     Computes abnormal activity statistics from movement data in memory.
     Replicates logic from abnormal_data_process.py without writing to disk.
     """
-    if not movement_data or vid_fps <= 0:
+    if not movement_data or vid_fps is None or vid_fps <= 0:
         return None, None
         
     time_steps = data_record_frame / vid_fps

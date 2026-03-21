@@ -73,7 +73,10 @@ def _end_video(tracker, frame_count, movement_data_writer):
 	return data_list
 		
 
-def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writer, crowd_data_writer, callback=None, session_id=None):
+def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writer, crowd_data_writer, callback=None, session_id=None, is_cam=False):
+	# Combine global config with argument
+	is_cam = IS_CAM or is_cam
+
 	def _calculate_FPS():
 		t1 = time.time() - t0
 		VID_FPS = frame_count / t1
@@ -85,9 +88,9 @@ def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writ
 			return "WARNING"
 		return "NORMAL"
 
-	if IS_CAM:
+	if is_cam:
 		VID_FPS = None
-		DATA_RECORD_FRAME = 1
+		DATA_RECORD_FRAME = 2 # Process every 2nd frame for webcam to avoid overload
 		TIME_STEP = 1
 		t0 = time.time()
 	else:
@@ -150,7 +153,7 @@ def video_process(cap, frame_size, net, ln, encoder, tracker, movement_data_writ
 		current_datetime = datetime.datetime.now()
 
 		# Run detection algorithm
-		if IS_CAM:
+		if is_cam:
 			record_time = current_datetime
 		else:
 			record_time = frame_count

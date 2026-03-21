@@ -439,6 +439,45 @@ function App() {
     }
   };
 
+  const handleStartWebcam = async () => {
+    if (!sessionContext.flow_type || !sessionContext.capacity || !sessionContext.sensitivity || !sessionContext.clustering || !sessionContext.goal || !sessionContext.yolo_model) {
+      alert("Please fill in all Scene Context Configuration fields.");
+      return;
+    }
+
+    setProcessingStatus('uploading');
+    setChartData([]);
+    lastRenderedFrameRef.current = 0;
+    setRealtimeData({ count: 0, violations: 0, restricted: false, frame: 0, frameImage: null });
+    setAbnormalFrames([]);
+    setRemarks([]);
+    setCurrentSession(null);
+
+    const formData = new FormData();
+    formData.append('flow_type', sessionContext.flow_type);
+    formData.append('capacity', sessionContext.capacity);
+    formData.append('sensitivity', sessionContext.sensitivity);
+    formData.append('clustering', sessionContext.clustering);
+    formData.append('goal', sessionContext.goal);
+    formData.append('yolo_model', sessionContext.yolo_model);
+
+    try {
+      const res = await axios.post(`${API_BASE}/start-webcam`, formData);
+      setFileId(res.data.file_id);
+      setProcessingStatus('processing');
+      setCurrentSession({
+        file_id: res.data.file_id,
+        filename: "Live Webcam Stream",
+        status: 'processing',
+        session_type: 'webcam'
+      });
+    } catch (err) {
+      console.error(err);
+      setProcessingStatus('idle');
+      alert("Error starting webcam. Please check if the API server is running.");
+    }
+  };
+
   const handleCancelSession = async () => {
     if (!fileId) return;
     try {
@@ -446,6 +485,16 @@ function App() {
       setProcessingStatus('cancelling...');
     } catch (err) {
       console.error("Failed to cancel session", err);
+    }
+  };
+
+  const handleStopWebcam = async () => {
+    if (!fileId) return;
+    try {
+      await axios.post(`${API_BASE}/stop-webcam/${fileId}`);
+      setProcessingStatus('cancelling...');
+    } catch (err) {
+      console.error("Failed to stop webcam", err);
     }
   };
 
@@ -917,23 +966,26 @@ function App() {
                       </div>
                     </div>
 
-                    <button
-                      disabled={!file || processingStatus === 'processing' || processingStatus === 'uploading' || !sessionContext.flow_type || !sessionContext.capacity || !sessionContext.sensitivity || !sessionContext.clustering || !sessionContext.goal}
-                      onClick={handleUpload}
-                      className="w-full py-3 px-6 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
-                    >
-                      {processingStatus === 'processing' || processingStatus === 'uploading' ? (
-                        <>
-                          <Loader2 className="animate-spin" size={18} />
-                          Processing...
-                        </>
-                      ) : (
-                        <>
-                          <Play size={18} />
-                          Start Analysis
-                        </>
-                      )}
-                    </button>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <button
+                        disabled={!file || processingStatus === 'processing' || processingStatus === 'uploading' || !sessionContext.flow_type || !sessionContext.capacity || !sessionContext.sensitivity || !sessionContext.clustering || !sessionContext.goal}
+                        onClick={handleUpload}
+                        className="flex-1 py-3 px-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                      >
+                        {processingStatus === 'processing' || processingStatus === 'uploading' ? (
+                          <><Loader2 className="animate-spin" size={18} /> Processing...</>
+                        ) : (
+                          <><Play size={18} /> Analyze Video</>
+                        )}
+                      </button>
+                      <button
+                        disabled={processingStatus === 'processing' || processingStatus === 'uploading' || !sessionContext.flow_type || !sessionContext.capacity || !sessionContext.sensitivity || !sessionContext.clustering || !sessionContext.goal}
+                        onClick={handleStartWebcam}
+                        className="flex-1 py-3 px-4 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                      >
+                        <Video size={18} /> Start Webcam
+                      </button>
+                    </div>
                     {file && (
                       <p className="text-xs text-gray-500 mt-2 text-center">
                         File size: {(file.size / (1024 * 1024)).toFixed(2)} MB
@@ -955,14 +1007,25 @@ function App() {
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-semibold text-gray-900">Processing Frame</h3>
                   <div className="flex items-center gap-4 text-sm text-gray-600">
-                    <button 
-                      onClick={handleCancelSession}
-                      disabled={processingStatus === 'cancelling...'}
-                      className="px-3 py-1.5 bg-red-100 text-red-700 hover:bg-red-200 rounded-lg text-sm font-semibold flex items-center gap-1 transition-colors disabled:opacity-50"
-                    >
-                      <XCircle size={16} />
-                      {processingStatus === 'cancelling...' ? 'Cancelling...' : 'Cancel Processing'}
-                    </button>
+                    {currentSession?.session_type === 'webcam' ? (
+                      <button 
+                        onClick={handleStopWebcam}
+                        disabled={processingStatus === 'cancelling...'}
+                        className="px-3 py-1.5 bg-red-100 text-red-700 hover:bg-red-200 rounded-lg text-sm font-semibold flex items-center gap-1 transition-colors disabled:opacity-50"
+                      >
+                        <XCircle size={16} />
+                        {processingStatus === 'cancelling...' ? 'Stopping...' : 'Stop Webcam'}
+                      </button>
+                    ) : (
+                      <button 
+                        onClick={handleCancelSession}
+                        disabled={processingStatus === 'cancelling...'}
+                        className="px-3 py-1.5 bg-red-100 text-red-700 hover:bg-red-200 rounded-lg text-sm font-semibold flex items-center gap-1 transition-colors disabled:opacity-50"
+                      >
+                        <XCircle size={16} />
+                        {processingStatus === 'cancelling...' ? 'Cancelling...' : 'Cancel Processing'}
+                      </button>
+                    )}
                     <div className="flex items-center gap-2">
                       <Video size={18} />
                       <span>Frame: {realtimeData.frame}</span>
