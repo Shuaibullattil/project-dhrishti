@@ -13,6 +13,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from db import db
 from app.services.risk_engine import RiskEngine
+from app.services.ai_service import generate_alert_insight
 import requests
 import cv2
 import numpy as np
@@ -360,7 +361,17 @@ def process_session_window(session_id: str) -> bool:
                 "timestamp": str(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
             }
 
-            # 3. Send Webhook
+            # 3. Generate AI Alert Insight
+            try:
+                ai_output = generate_alert_insight(payload)
+                payload["ai_insight"] = ai_output["insight"]
+                payload["recommended_action"] = ai_output["action"]
+            except Exception as ai_e:
+                print(f"[{session_id}] AI insight generation failed: {ai_e}")
+                payload["ai_insight"] = "Crowd behavior indicates potential risk"
+                payload["recommended_action"] = "Please check the area immediately"
+
+            # 4. Send Webhook
             try:
                 if heatmap_path and os.path.exists(heatmap_path):
                     with open(heatmap_path, "rb") as f:

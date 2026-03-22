@@ -288,3 +288,73 @@ async def explain_latest_alert(session_id: str) -> Optional[str]:
 
     return await analyze_context(_fetch_session_context(session_id) + context, mode="explain")
 
+
+def generate_alert_insight(data: Dict) -> Dict:
+    """
+    Generate dynamic AI-powered alert message for CRITICAL events.
+    Synchronous function for integration with aggregator.
+    """
+    if not groq_client:
+        return {
+            "insight": "Crowd behavior indicates potential risk",
+            "action": "Please check the area immediately"
+        }
+
+    risk_level = data.get("risk_level", "CRITICAL")
+    people_count = data.get("people_count", "Unknown")
+    timestamp = data.get("timestamp", "Unknown")
+
+    prompt = f"""You are a crowd monitoring assistant.
+
+Explain why a CRITICAL alert was triggered in simple terms.
+
+Rules:
+* Do NOT use numbers
+* Do NOT mention technical metrics
+* Keep explanation under 2 lines
+* Use simple language for security staff
+
+Also provide a short recommended action.
+
+Output format:
+Insight: <text>
+Action: <text>
+
+Data:
+Risk Level: {risk_level}
+People Count: {people_count}
+Timestamp: {timestamp}
+"""
+
+    try:
+        response = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": "You are a helpful security assistant."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.5
+        )
+        content = response.choices[0].message.content.strip()
+        
+        # Parse response
+        insight = "Crowd behavior indicates potential risk"
+        action = "Please check the area immediately"
+        
+        for line in content.split("\n"):
+            if line.lower().startswith("insight:"):
+                insight = line.split(":", 1)[1].strip()
+            elif line.lower().startswith("action:"):
+                action = line.split(":", 1)[1].strip()
+                
+        return {
+            "insight": insight,
+            "action": action
+        }
+    except Exception as e:
+        print(f"Groq alert insight generation failed: {e}")
+        return {
+            "insight": "Crowd behavior indicates potential risk",
+            "action": "Please check the area immediately"
+        }
+
