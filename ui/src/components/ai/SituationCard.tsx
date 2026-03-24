@@ -16,21 +16,45 @@ type ParsedSummary = {
 };
 
 function parseAnalysis(text: string): ParsedSummary {
-  const lines = (text || "").split("\n").map((l) => l.trim());
+  const cleanText = (text || "").replace(/\*/g, "");
+  const lines = cleanText.split("\n").map((l) => l.trim());
 
-  const getValue = (label: string) => {
-    const line = lines.find((l) =>
-      l.toLowerCase().startsWith(label.toLowerCase() + ":")
-    );
-    if (!line) return "";
-    const [, rest] = line.split(/:(.+)/);
-    return (rest || "").trim();
+  const result = {
+    status: "",
+    reason: "",
+    action: "",
   };
 
+  let currentSection: keyof typeof result | null = null;
+  const content = {
+    status: [] as string[],
+    reason: [] as string[],
+    action: [] as string[],
+  };
+
+  for (const line of lines) {
+    const l = line.toLowerCase();
+    if (l.startsWith("status:")) {
+      currentSection = "status";
+      const [, rest] = line.split(/:(.+)/);
+      if (rest && rest.trim()) content.status.push(rest.trim());
+    } else if (l.startsWith("reason:")) {
+      currentSection = "reason";
+      const [, rest] = line.split(/:(.+)/);
+      if (rest && rest.trim()) content.reason.push(rest.trim());
+    } else if (l.startsWith("recommended action:") || l.startsWith("action:")) {
+      currentSection = "action";
+      const [, rest] = line.split(/:(.+)/);
+      if (rest && rest.trim()) content.action.push(rest.trim());
+    } else if (currentSection && line) {
+      content[currentSection].push(line);
+    }
+  }
+
   return {
-    status: getValue("Status"),
-    reason: getValue("Reason"),
-    action: getValue("Recommended Action"),
+    status: content.status.join("\n").trim(),
+    reason: content.reason.join("\n").trim(),
+    action: content.action.join("\n").trim(),
   };
 }
 
