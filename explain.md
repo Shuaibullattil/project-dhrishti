@@ -193,3 +193,59 @@ If you are running a live demo of a gallery where people continuously pour in (0
 > *3. Finally, it calculates the **Final Risk Score**. Because our goal is 'Monitoring', the engine weights density heavily (50%) and motion moderately (30%). It adds these up, applies our High Sensitivity multiplier of 1.2... and we get a final Risk Score of roughly **0.72**.*
 >
 > *Because 0.72 crosses our safety threshold, you will immediately see the Risk Level jump to **WARNING** (or CRITICAL if they start moving faster). At this moment, the system is auto-capturing a heatmap and pinging the AI to generate a natural-language alert for our security staff."*
+
+---
+
+## 11. Configuring Environmental Context (Scenarios & Goals)
+
+Drishti’s true power lies in its ability to adapt to its environment. The exact same crowd that is "Normal" at a rock concert could be "Critical" inside a hospital corridor. You control this through Context settings.
+
+### 1. How Clustering Influences Risk Calculations
+Clustering dictates whether people standing close together is an expected social behavior or a dangerous bottleneck. Mathematically, it applies a direct multiplier to the base **Density Score** before the final risk is calculated:
+
+* **`ALLOWED` (Multiplier 0.6x):** Reduces the density penalty by 40%. Used in malls or parks where families naturally group together.
+* **`LIMITED` (Multiplier 0.8x):** Reduces penalty slightly (20%). For general monitoring.
+* **`DISCOURAGED` (Multiplier 1.0x):** Baseline calculation. High density is penalized normally.
+* **`NOT_ALLOWED` (Multiplier 1.2x):** Inflates the density penalty by 20%. Used on escalators, exit doors, or restricted hallways where any bunching up is an instant hazard.
+
+### 2. How to Choose the Right Goal
+The `Goal` setting completely rewires the mathematical formula inside the Risk Engine, changing which metrics the system emphasizes:
+
+* **`MONITORING` (General Purpose):** A balanced approach weighting Density (50%), Motion (30%), and Surge (20%). Best for wide, open public spaces like atriums or plazas.
+* **`FLOW`:** Prioritizes smooth movement. Density (40%) and Motion (40%) are weighted equally. Best for hallways, corridors, or sidewalks where people need to keep moving.
+* **`STAY`:** heavily penalizes extreme overcrowding (Density 50%) but is very forgiving of people standing completely still (Motion 20%). Best for waiting rooms, lounges, and platforms.
+* **`QUEUE`:** Highly sensitive to sudden crowds arriving at once (Surge 40%) and high density (50%). Very forgiving of no movement. Best for ticket counters or entry gates.
+* **`SECURITY`:** Hyper-focused on unexpected running or panic. Weights Motion at a massive 60%, while ignoring minor density buildups. Best for after-hours surveillance or quiet secure zones.
+* **`RESTRICTED`:** Weights Motion at 70% and completely drops Density to 0%. If *anyone* is moving, it's an immediate red flag, regardless of how many people there are.
+
+### 3. Recommended Scenario Profiles
+
+When setting up Drishti for different real-world environments, use these combinations to ensure the best accuracy:
+
+#### A. The Shopping Mall Atrium
+* *Context:* A large open space where people stroll lazily, stop to look at phones, and groups huddle together.
+* **Goal:** `MONITORING`
+* **Flow Type:** `SLOW`
+* **Clustering:** `ALLOWED`
+* **Sensitivity:** `LOW` or `MEDIUM`
+
+#### B. Metro Train Exit / Turnstiles
+* *Context:* A high-throughput choke point. People need to move fast and efficiently. If they stop, it creates a dangerous backlog.
+* **Goal:** `FLOW`
+* **Flow Type:** `TRANSIT_RUSH`
+* **Clustering:** `NOT_ALLOWED` (People should not loiter here)
+* **Sensitivity:** `HIGH`
+
+#### C. Escalator Landing Zone
+* *Context:* An extremely dangerous zone. If people pile up at the bottom or top of an escalator, injuries happen instantly. 
+* **Goal:** `FLOW`
+* **Flow Type:** `SLOW`
+* **Clustering:** `NOT_ALLOWED`
+* **Sensitivity:** `PARANOID` (Requires the fastest possible reaction time)
+
+#### D. Sports Stadium Entrance Gates
+* *Context:* Thousands of people bottlenecking into organized lines. Fast growth is expected.
+* **Goal:** `QUEUE`
+* **Flow Type:** `NORMAL`
+* **Clustering:** `LIMITED` (Lines pack tightly, but shouldn't become a mob)
+* **Sensitivity:** `MEDIUM`
