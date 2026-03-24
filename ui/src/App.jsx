@@ -1074,7 +1074,9 @@ function App() {
                         </div>
                         <div className="space-y-2 max-h-48 overflow-y-auto">
                           {remarks.slice(-5).reverse().map((remark, idx) => (
-                            <div key={idx} className={`p-3 rounded-lg border-l-4 ${remark.severity === 'CRITICAL' ? 'bg-red-50 border-red-500' :
+                            <div key={idx} 
+                              onClick={() => setAlertDrawerOpen(true)}
+                              className={`p-3 rounded-lg border-l-4 cursor-pointer hover:shadow-md transition-shadow ${remark.severity === 'CRITICAL' ? 'bg-red-50 border-red-500' :
                               remark.severity === 'HIGH' ? 'bg-orange-50 border-orange-500' :
                                 remark.severity === 'MEDIUM' ? 'bg-yellow-50 border-yellow-500' :
                                   'bg-green-50 border-green-500'
@@ -1677,7 +1679,7 @@ function App() {
                               <h4 className="text-sm font-semibold text-gray-700 mb-3">Remarks Timeline</h4>
                               <div className="space-y-2 max-h-64 overflow-y-auto">
                                 {sessionDetails.aggregated_windows.map((window, idx) => (
-                                  <div key={idx} className={`p-3 rounded-lg border-l-4 ${window.severity === 'CRITICAL' ? 'bg-red-50 border-red-500' :
+                                  <div key={idx} className={`p-3 rounded-lg border-l-4 cursor-pointer hover:shadow-md transition-shadow ${window.severity === 'CRITICAL' ? 'bg-red-50 border-red-500' :
                                     window.severity === 'HIGH' ? 'bg-orange-50 border-orange-500' :
                                       window.severity === 'MEDIUM' ? 'bg-yellow-50 border-yellow-500' :
                                         'bg-green-50 border-green-500'

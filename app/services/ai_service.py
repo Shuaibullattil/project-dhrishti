@@ -241,15 +241,16 @@ async def analyze_context(session_context: Dict, session_data: str, mode: str, q
             "You are an AI crowd monitoring assistant. "
             "Write concise operational explanations grounded in the provided rules, environment, and session behavior. "
             "Do not use raw metric names, formulas, or generic language. "
-            "Return exactly three labeled sections: Status, Reason, Action."
+            "Return exactly three labeled sections: Status, Reason, Action. "
+            "CRITICAL: Keep each section to exactly 1 short sentence (maximum 10 words)."
         )
         user_prompt = _build_ai_prompt(
             risk_rules=risk_rules,
             context_description=context_description,
             session_data=session_data,
             question=(
-                "Provide a concise operational situation summary with exactly three labeled sections: "
-                "Status, Reason, and Action."
+                "Provide a very brief operational situation summary with exactly three labeled sections: "
+                "Status, Reason, and Action. Keep each section to 1 short sentence."
             ),
         )
     elif mode == "qa":

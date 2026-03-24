@@ -68,56 +68,59 @@ const AlertExplanationDrawer: React.FC<AlertExplanationDrawerProps> = ({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-40 flex">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
-        className="flex-1 bg-black bg-opacity-40"
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
         onClick={onClose}
         aria-hidden="true"
       />
 
-      {/* Drawer */}
-      <aside className="w-full max-w-md bg-white shadow-xl border-l border-gray-200 flex flex-col">
-        <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
-          <h2 className="text-base font-semibold text-gray-900">
-            Alert Justification
+      {/* Modal Popup */}
+      <div className="relative w-full max-w-lg bg-white rounded-xl shadow-2xl flex flex-col max-h-[85vh] overflow-hidden transform transition-all animate-in fade-in zoom-in-95 duration-200">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50">
+          <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+            AI Alert Justification
           </h2>
           <button
             onClick={onClose}
-            className="p-1 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+            className="p-1.5 rounded-full text-gray-400 hover:text-gray-700 hover:bg-gray-200 transition-colors"
             aria-label="Close"
+            title="Close"
           >
             <X size={18} />
           </button>
         </div>
 
-        <div className="flex-1 p-5 overflow-y-auto">
+        <div className="flex-1 p-6 overflow-y-auto">
           {!sessionId && (
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-gray-500 text-center">
               Select a session to view alert justification.
             </p>
           )}
 
           {sessionId && loading && (
-            <div className="flex items-center justify-center py-8 text-gray-500">
-              <Loader2 className="animate-spin mr-2" size={18} />
-              <span>Analyzing alert conditions...</span>
+            <div className="flex flex-col items-center justify-center py-10 text-gray-500">
+              <Loader2 className="animate-spin mb-3 text-blue-500" size={28} />
+              <span className="text-sm font-medium">Analyzing alert conditions...</span>
             </div>
           )}
 
           {sessionId && !loading && analysis && (
-            <p className="whitespace-pre-line text-sm text-gray-900">
-              {renderWithBold(analysis)}
-            </p>
+            <div className="bg-blue-50/50 p-4 rounded-lg border border-blue-100">
+              <p className="whitespace-pre-line text-sm text-gray-800 leading-relaxed">
+                {renderWithBold(analysis)}
+              </p>
+            </div>
           )}
 
           {sessionId && !loading && !analysis && (
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-gray-500 text-center py-8">
               No detailed justification available for this alert yet.
             </p>
           )}
         </div>
-      </aside>
+      </div>
     </div>
   );
 };

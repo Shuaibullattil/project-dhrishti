@@ -59,12 +59,14 @@ function parseAnalysis(text: string): ParsedSummary {
 }
 
 const SituationCard: React.FC<SituationCardProps> = ({ sessionId }) => {
-  const [analysis, setAnalysis] = useState<string | null>(null);
+  const [assessments, setAssessments] = useState<string[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!sessionId) {
-      setAnalysis(null);
+      setAssessments([]);
+      setCurrentIndex(0);
       return;
     }
 
@@ -79,16 +81,21 @@ const SituationCard: React.FC<SituationCardProps> = ({ sessionId }) => {
           { timeout: 6000 }
         );
         if (!cancelled) {
-          setAnalysis(res.data?.analysis || "");
+          const newAnalysis = res.data?.analysis || "";
+          if (newAnalysis) {
+            setAssessments(prev => {
+              if (prev.length === 0 || prev[prev.length - 1] !== newAnalysis) {
+                const nextArray = [...prev, newAnalysis];
+                setCurrentIndex(nextArray.length - 1);
+                return nextArray;
+              }
+              return prev;
+            });
+          }
         }
       } catch (err) {
         console.error("AI summary fetch failed", err);
-        if (!cancelled) {
-          // Keep last good value; if none, show safe fallback in UI
-          if (!analysis) {
-            setAnalysis(null);
-          }
-        }
+        // Do nothing on error. Old assessments remain visible.
       } finally {
         if (!cancelled) {
           setLoading(false);
@@ -106,14 +113,38 @@ const SituationCard: React.FC<SituationCardProps> = ({ sessionId }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
-  const hasAnalysis = !!analysis;
-  const parsed = hasAnalysis ? parseAnalysis(analysis || "") : null;
+  const hasAnalysis = assessments.length > 0;
+  const currentAnalysis = hasAnalysis ? assessments[currentIndex] : null;
+  const parsed = currentAnalysis ? parseAnalysis(currentAnalysis) : null;
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-      <div className="flex items-center justify-between mb  -4">
+      <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold text-gray-900">System Assessment</h3>
-        {loading && <Loader2 className="animate-spin text-gray-400" size={18} />}
+        <div className="flex items-center gap-2">
+          {hasAnalysis && assessments.length > 1 && (
+            <div className="flex items-center gap-2 text-xs text-gray-500 mr-2 bg-gray-50 rounded-lg p-1 border border-gray-100">
+              <button 
+                onClick={() => setCurrentIndex(i => Math.max(0, i - 1))}
+                disabled={currentIndex === 0}
+                className="p-1 hover:bg-white rounded shadow-sm disabled:opacity-30 disabled:shadow-none transition-all"
+                title="Previous Assessment"
+              >
+                ◀
+              </button>
+              <span className="w-8 text-center font-medium">{currentIndex + 1} / {assessments.length}</span>
+              <button 
+                onClick={() => setCurrentIndex(i => Math.min(assessments.length - 1, i + 1))}
+                disabled={currentIndex === assessments.length - 1}
+                className="p-1 hover:bg-white rounded shadow-sm disabled:opacity-30 disabled:shadow-none transition-all"
+                title="Next Assessment"
+              >
+                ▶
+              </button>
+            </div>
+          )}
+          {loading && <Loader2 className="animate-spin text-gray-400" size={18} />}
+        </div>
       </div>
 
       {!sessionId && (
