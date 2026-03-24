@@ -249,3 +249,28 @@ When setting up Drishti for different real-world environments, use these combina
 * **Flow Type:** `NORMAL`
 * **Clustering:** `LIMITED` (Lines pack tightly, but shouldn't become a mob)
 * **Sensitivity:** `MEDIUM`
+
+---
+
+## 12. Presenter FAQ: Defending the Algorithm
+
+If your guide or examiner asks difficult questions about the underlying math, use these answers.
+
+**Q: "Where did you get the specific threshold values for speed (like STATIC = 5.0, SLOW = 30.0, FAST_FLOW = 80.0)?"**
+
+**A: How to Answer (Word-for-Word):**
+*"These values are **empirical heuristic thresholds** derived from experimental observation and testing, rather than absolute real-world constants. Here is the exact justification for them:*
+
+1. ***Pixel Displacement, Not Real Physics:** These numbers represent 'pixels moved per second' across our specific video frame resolution, not kilometers per hour. Because every camera has a different mounting angle, height, and perspective distortion, there is no universal 'speed' constant without using 3D depth sensors.*
+2. ***Experimental Calibration:** We ran our YOLO and ByteTrack pipeline on various sample datasets representing different crowd states (e.g., people standing in queues, walking in malls, and running). We logged the average tracking velocity (pixel displacement) for each state and set our baseline thresholds slightly above those averages to act as a buffer.*
+3. ***They are Tunable Hyperparameters:** In a real-world production deployment, these are not hardcoded. When installing a new CCTV camera, the system undergoes a brief 'calibration phase' where these base values are adjusted according to that specific camera's focal length and distance. For the scope of this project, we established locked-in baseline values optimized for standard security camera angles."*
+
+**Q: "What exactly is stored in 'Abnormal Statistics' and how do you calculate crowd energy?"**
+
+**A: How to Answer (Word-for-Word):**
+*"After detecting moving objects, our system calculates the mechanical Kinetic Energy of the crowd to mathematically define 'abnormal' behavior. Here's how the backend script (`abnormal_data_process.py`) works:*
+
+1. **Calculating Micro-Energy:** *For every tracked person, we calculate their movement speed (`Euclidean distance over time`). We then calculate their kinetic energy using a modified baseline formula (`E = 0.5 * speed²`).*
+2. **Statistical Distribution (Pandas):** *We gather the energy of the entire crowd into a dataset and run statistical analysis on it. We calculate the `mean`, `standard deviation`, and quartiles. More importantly, we calculate the `skewness` and `kurtosis` (which mathematically proves whether extreme running is happening frequently).*
+3. **Defining 'Acceptable Energy':** *We calculate a dynamic threshold called `acceptable_energy` (derived from `mean ** 1.05`). Any movement that crosses this dynamic threshold is flagged as physically abnormal for that specific crowd.*
+4. **Outlier Filtering (Cleaned Stats):** *Finally, we recursively remove extreme outliers (anomalies) until the data 'skew' drops below 7.5. This gives us a pure baseline (`cleaned_stats`) to compare against the raw chaotic data (`original_stats`). Both sets are stored in MongoDB to train future thresholds."*
