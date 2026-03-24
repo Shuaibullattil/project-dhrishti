@@ -165,3 +165,31 @@ Here is a simple, natural way to explain the flow to your audience:
 > *Next, we calculate system-wide metrics. By combining everyone's speed, the area they take up on screen, and the overall crowd size over a 5-second timeframe, we generate a highly accurate dataset.*
 > 
 > *Finally, we pass this data into our contextual Risk Engine. Because a crowded football stadium is different than a crowded restricted hallway, our Risk Engine dynamically weights the density and motion. If the algorithm detects an unnatural surge or panic movement, it instantly jumps to Critical, generating an AI summary and alerting security staff on the dashboard."*
+> 
+
+---
+
+## 10. Live Demo Scenario: The Gallery Rush
+
+If you are running a live demo of a gallery where people continuously pour in (0 to 250 people), here is exactly how to explain it to your audience while it happens.
+
+### The Setup:
+* **Context Location:** An Art Gallery opening.
+* **Flow Type:** `"FAST_FLOW"` (Expected walking speed is high, e.g., 80 pixels/sec).
+* **Goal:** `"MONITORING"` (The system balances Density 50%, Motion 30%, and Surge 20%).
+* **Sensitivity:** `"HIGH"` (Multiplies final raw risk by `1.2` for early warnings).
+* **Capacity:** `200` people.
+
+### The Script (What to say during the demo):
+
+> *"For this demonstration, we are monitoring a gallery space. We've told the system that the maximum safe capacity is 200 people. Because it's a busy exhibition, we set the 'Flow Type' to 'Fast Flow', so the system expects continuous, brisk movement. Furthermore, we've set the 'Sensitivity' to 'High' to ensure we get early warnings before it gets dangerously packed.*
+> 
+> *Right now, watch the crowd count rise across the 5-second aggregated windows. As the crowd hits 250 people, we are officially 25% over our safe capacity.*
+> 
+> *Let me show you exactly what the Risk Engine is doing behind the scenes at this exact moment:*
+>
+> *1. First, it calculates the **Density Score**. We are at 250 people against a capacity of 200. That gives a base density score of 1.25. (Because clustering is allowed in galleries, the engine softens this slightly behind the scenes).*
+> *2. Next, it calculates the **Motion Score**. The crowd is moving at a speed of about 60, compared to our fast expected speed of 80. That gives us a motion score of 0.75.*
+> *3. Finally, it calculates the **Final Risk Score**. Because our goal is 'Monitoring', the engine weights density heavily (50%) and motion moderately (30%). It adds these up, applies our High Sensitivity multiplier of 1.2... and we get a final Risk Score of roughly **0.72**.*
+>
+> *Because 0.72 crosses our safety threshold, you will immediately see the Risk Level jump to **WARNING** (or CRITICAL if they start moving faster). At this moment, the system is auto-capturing a heatmap and pinging the AI to generate a natural-language alert for our security staff."*
