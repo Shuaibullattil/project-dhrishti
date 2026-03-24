@@ -109,6 +109,21 @@ Because real-time computer vision skips frames or has minor detection flickers, 
 * **Averaging:** It collects all frames processed within those 5 seconds. It calculates the `avg_human_count`, `max_human_count`, and `avg_motion_speed` of that exact 5-second block.
 * **Why it's needed:** If a person is temporarily blocked by a pillar for 10 frames, the frame-level crowd count drops from 50 to 49, triggering false dips. Aggregating over 5 seconds smooths out these tiny drops and provides the Risk Engine with a stable statistical baseline.
 
+### Aggregated Output Variables (The Final Payload)
+When an aggregation window finishes, it generates a final block of data for the UI and AI. Here is what each value means using a real example:
+
+* **`motion_score` (e.g., 0.0783):** The ratio of the crowd's actual speed versus the expected speed for this environment type. A score of `1.0` means they are walking exactly as fast as expected. `0.0783` means the crowd is moving very slowly (about 7.8% of the expected maximum speed).
+* **`surge_score` (e.g., 0.0012):** Measures how violently the crowd size is changing. It is the crowd growth rate divided by the maximum capacity. `0.0012` is extremely low, meaning the crowd size is very stable right now.
+* **`risk_score` (e.g., 0.3666):** The final mathematical combination of Density, Motion, and Surge. It ranges from `0.0` (completely empty/safe) to `1.0` (maximum danger). A score of `0.3666` puts it slightly above the "Normal" threshold.
+* **`risk_level` (e.g., "BUSY"):** The human-readable translation of the risk score.
+  * *Possible values:* `"NORMAL"` (score <= 0.30), `"BUSY"` (score <= 0.55), `"WARNING"` (score <= 0.75), `"CRITICAL"` (score > 0.75).
+* **`risk_flags` (e.g., `["overcrowding"]`):** An array of specific triggers that pushed the risk higher.
+  * *Possible values:* `"overcrowding"` (density > 0.9), `"panic_movement"` (motion score > 1.2), `"sudden_surge"` (surge score > 0.5). If none are triggered, it is an empty array `[]`.
+* **`severity` (e.g., "LOW"):** A backward-compatibility field mapped from the risk level, used by the UI charts.
+  * *Possible values:* `"LOW"` (for Normal/Busy), `"MEDIUM"` (for Warning), `"HIGH"` (for Critical).
+* **`crowd_state` (e.g., "BUSY"):** An exact copy of the `risk_level`, kept to ensure older dashboard features don't break.
+* **`remark` (e.g., "Risk factors detected: Overcrowding"):** A simple, auto-generated text string sent over WebSockets to display instant UI messages. If no flags are active, it reads `"Crowd behavior within normal limits"`.
+
 ---
 
 ## 7. Backend Architecture (Core Files)
